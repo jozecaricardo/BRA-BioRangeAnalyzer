@@ -34,34 +34,9 @@ BRA provides an integrated interface for the main analytical stages commonly req
 | **Outputs and exports** | Export to BioGeoBEARS, TNT, NEXUS, and NDM-compatible formats, together with reports and visual outputs |
 | **Visual interpretation** | Ancestral-range plots, uncertainty plots, regular-grid maps, and extrapolation layers |
 
-## Installation
+## Installation and Running the App
 
-BRA requires **R 4.0.0 or later**. Use of **RStudio** is recommended for installation, package loading, and local execution.
-
-### Install from GitHub
-
-**Option 1: Basic installation**
-
-```r
-devtools::install_github("jozecaricardo/BRA-BioRangeAnalyzer")
-```
-
-**Option 2: Installation with all dependencies (recommended)**
-
-If you encounter issues with missing packages (especially `BioGeoBEARS`, `raster`, `terra`, or `sp`), use the `dependencies = TRUE` flag to automatically install all required dependencies:
-
-```r
-devtools::install_github("jozecaricardo/BRA-BioRangeAnalyzer", dependencies = TRUE)
-```
-
-**Note on BioGeoBEARS:** If `BioGeoBEARS` installation fails during compilation, you may need to install it separately:
-
-```r
-install.packages('devtools', repos='https://cloud.r-project.org')
-devtools::install_github('nmatzke/BioGeoBEARS', INSTALL_opts='--byte-compile', upgrade='never')
-```
-
-## Run the app
+BRA requires **R 4.0.0 or later**. Use of **RStudio** is recommended for installation and local execution.
 
 ### Recommended method (to avoid compatibility issues)
 
@@ -82,16 +57,7 @@ unzip("~/BRA-BioRangeAnalyzer-download.zip", exdir = "~")
 shiny::runApp("~/BRA-BioRangeAnalyzer-main/inst/shiny")
 ```
 
-### Alternative method (if you prefer package installation)
-
-After installation, start the application with:
-
-```r
-library(biogeoshiny)
-biogeoshiny::run_biogeoshiny()
-```
-
-**Note:** This method may encounter namespace conflicts on some systems. If you experience errors related to `as.data.frame` or raster objects, use the recommended method above.
+This is the **only recommended method** to ensure compatibility and avoid namespace-related errors.
 
 ## Input formats
 
