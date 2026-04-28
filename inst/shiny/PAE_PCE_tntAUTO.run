@@ -1,0 +1,1298 @@
+macro= ;
+clb;
+mxram 1000;
+macro * 15 1000;
+macfloat 3;
+piwe-;
+
+report-;
+
+proc out_TNT/pres_abs.tnt ;
+
+hold 99999;
+
+log out_TNT/PAE_PCE_Summary.txt ;
+quote
+================================================================================
+           partially AUTOMATED PAE-PCE ANALYSIS - SUMMARY
+================================================================================
+Matrix: out_TNT/pres_abs.tnt
+Max iterations: 10 (by author)
+================================================================================
+;
+log/ ;
+
+
+
+log+ out_TNT/resul_CI_RI.log;
+quote RUN, CI, RI, tree_length;
+log/;
+
+var: removed_count;
+
+/* ========================================================================== */
+/* MAIN ITERATION LOOP                                                        */
+/* ========================================================================== */
+
+/* Define variables for automation */
+var: total_removed conta contagem;
+var: theminchar themaxchar ci_val[(nchar + 1 )] ri_val[(nchar + 1)] rc_val[(nchar + 1)] char_i num_chars;
+var: THEMINtree THEMAXtree; 
+var: THIStree CItree RItree RCtree nome list_idx;
+
+/* [OK] NEW: Global array to store ALL deactivated characters */
+var: all_deactivated[(nchar + 1)] total_deactivated;
+
+set num_chars nchar;
+set total_removed 0;
+set total_deactivated 0;
+
+outgroup ROOT;
+
+set theminchar 0;
+set themaxchar 1;
+
+cnames=;
+
+/* --------------ROUNDS------------------- */
+
+quote
+============================================================================
+                ROUND 1 - Starting iteration
+============================================================================
+;
+
+log out_TNT/Round_Output1.txt;
+
+quote
+============================================================================
+                ROUND 1 - PAE-PCE Iteration
+============================================================================
+;
+
+/* Clear memory */
+keep 0 ;
+ttags - ;
+rseed 0 ; 
+
+/* New tech search */  
+quote Running parsimony analysis... ;
+xmult= hits 7 rep 5 rss level 10;
+reroot [;
+
+/* Save most parsimonious trees */
+tsave *out_TNT/Round_MPT1.tre ;
+save ;
+tsave / ;
+quote Most parsimonious trees saved ;
+
+/* Calculate strict consensus */
+if ((ntrees+1) > 1)
+    quote Calculating strict consensus... ;
+    nelsen*;      /*  calculate strict consensus   */
+    tchoose {strict};
+    tsave out_TNT/Round_Consensus1.tmp ;
+    save;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map1.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree1.tre ;
+    tt-;    
+    quote Consensus tree saved ;
+    keep 0;
+else
+    quote Last tree... ;
+    tsave out_TNT/Round_Consensus1.tmp ;
+    save 0;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map1.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree1.tre ;
+    tt-;    
+    quote Last tree saved ;
+    keep 0;
+end;    
+
+/* ====================================================================== */
+/* CALCULATE AND SAVE COMPLETE CI/RI STATISTICS                          */
+/* ====================================================================== */
+
+quote
+----------------------------------------------------------------------------
+Tree Statistics:
+----------------------------------------------------------------------------
+;
+
+/* get the tree */
+short out_TNT/Round_Consensus1.tmp;
+
+set THEMINtree minsteps;
+set THEMAXtree maxsteps;
+set THIStree length[0];
+
+log+ out_TNT/Round_CI_RI_Table1.txt ;
+quote
+============================================================================
+        ROUND 1 - COMPLETE CI AND RI TABLE FOR ALL CHARACTERS
+============================================================================
+
+Character | CI    | RI    | RC    | Status
+----------|-------|-------|-------|----------------------------------
+;
+
+/* Loop through all characters and print CI/RI */
+loop 0 ('num_chars' - 1) ;    
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end;
+
+        /* Calculate RI */
+        if (('themaxchar'-'theminchar') == 0)
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end;
+
+        /* Calculate RC */
+        set rc_val[#1]  'ri_val[#1]'*'ci_val[#1]';
+
+        /* Print character info */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | NON-HOMOPLASTIC SYNAPOMORPHY ;
+            else
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+            end;
+        else
+            quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote #1 | INACTIVE | INACTIVE | INACTIVE | Character deactivated in previous round;
+    end;
+stop;
+
+/* tree statistics (usando valores capturados anteriormente) */
+set CItree 'THEMINtree'/'THIStree';
+set RItree ('THEMAXtree'-'THIStree')/('THEMAXtree'-'THEMINtree');
+set RCtree 'RItree'*'CItree';
+
+log+ out_TNT/resul_CI_RI.log;
+
+quote
+============================================================================
+RUN_1, 'CItree', 'RItree', 'RCtree', 'THIStree';
+
+log/ ;
+
+/* ====================================================================== */
+/* IDENTIFY AND LIST NON-HOMOPLASTIC SYNAPOMORPHIES                      */
+/* ====================================================================== */
+
+log+ out_TNT/Round_Synapomorphies1.txt ;
+quote
+============================================================================
+ROUND 1 - NON-HOMOPLASTIC SYNAPOMORPHIES (CI=1, RI=1)
+============================================================================
+
+These characters (taxa/species) will be removed for the next round:
+
+Character(Taxon) | Run
+------------------------------------------------------------    
+;
+
+set removed_count 0;
+set conta 0;
+set contagem 0;
+
+/* Loop to identify and list synapomorphies */
+loop 0 ('num_chars' - 1) ;
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end ;
+
+        /* Calculate RI */
+        if ( ('themaxchar'-'theminchar') == 0 )
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end ;
+
+        set nome #1;
+
+        /* If CI=1 AND RI=1, it's a non-homoplastic synapomorphy */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote Character 'nome' | Run 1;
+                set conta ++;
+                set removed_count ++ ;
+            else
+                quote It is a homoplastic synapomorphy;
+            end;
+        else
+            quote It is a homoplastic synapomorphy;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote Character #1 is INACTIVE (deactivated in previous round);
+    end;            
+stop;
+
+if ('removed_count' > 0)
+    var: caraExtract['conta'];
+    loop 0 ('num_chars' - 1);
+        set char_i length[0 #1];
+        if ('char_i' > 0)
+            if ('ci_val[#1]' == 1)
+                if ('ri_val[#1]' == 1)
+                    set caraExtract['contagem'] #1;
+                    set all_deactivated['total_deactivated'] #1;
+                    set total_deactivated ++;
+                    set contagem ++;
+                    set total_removed ++;
+                else
+                    quote Not counted;
+                end;
+            else
+                quote Not counted;
+            end;
+        else
+            /* Character is INACTIVE - skip */
+            quote Character #1 is INACTIVE - not counted;
+        end;        
+    stop;
+
+    quote
+    ----------------------------------------------------------------------------
+    Total synapomorphies found: 'removed_count'
+    Characters removed:;
+    loop 0 ('conta' - 1) ;
+        quote character 'caraExtract[#1]';
+    stop;
+    
+    quote
+    ============================================================================
+    ;
+
+
+    set list_idx 0;
+    loop 0 ('total_deactivated' - 1) ;
+        ccode] 'all_deactivated['list_idx']';
+        quote Deactivating character 'all_deactivated['list_idx']';
+        set list_idx ++;
+    stop;
+
+    /* [OK] PROTECTION 2: Update num_chars after deactivation */
+    set num_chars nchar;
+
+    quote
+    ----------------------------------------------------------------------------
+    Round 1 Summary:
+    Characters removed this round: 'all_deactivated[0-('total_deactivated' - 1) &45]'
+    Total characters removed so far: 'total_removed'
+    ----------------------------------------------------------------------------
+    ;
+    log/;
+
+    log+ out_TNT/PAE_PCE_Summary.txt;
+
+    quote
+    ================================================================================
+                        REACHED ITERATION NUMBER 1
+    ================================================================================
+    Maximum iterations (10)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+
+    Note: Analysis MIGHT BE stopped due to iteration limit.
+    Consider increasing max_iterations if more rounds are needed.
+    ================================================================================
+    ;
+    log/;
+else
+    log/;
+    quote
+    ============================================================================
+    STOPPING: No more non-homoplastic synapomorphies found in Round 1
+    ============================================================================
+    ;
+    
+    log+ out_TNT/PAE_PCE_Summary.txt;
+    quote
+    ================================================================================
+                        ANALYSIS COMPLETED SUCCESSFULLY
+    ================================================================================
+    Stopped at iteration: 1
+    Reason: No more non-homoplastic synapomorphies (CI=1, RI=1)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+    ================================================================================
+    ;
+    log/;
+    silent-;
+    report=;
+    proc/;
+end;
+
+/* ---------------- RUN 2 ----------------- */
+set theminchar 0;
+set themaxchar 1;
+
+cnames=;
+
+/* --------------ROUNDS------------------- */
+
+quote
+============================================================================
+                ROUND 2 - Starting iteration
+============================================================================
+;
+
+log out_TNT/Round_Output2.txt;
+
+quote
+============================================================================
+                ROUND 2 - PAE-PCE Iteration
+============================================================================
+;
+
+/* Clear memory */
+keep 0 ;
+ttags - ;
+rseed 0 ; 
+
+/* New tech search */  
+quote Running parsimony analysis... ;
+xmult= hits 7 rep 5 rss level 10;
+reroot [;
+
+/* Save most parsimonious trees */
+tsave *out_TNT/Round_MPT2.tre ;
+save ;
+tsave / ;
+quote Most parsimonious trees saved ;
+
+/* Calculate strict consensus */
+if ((ntrees+1) > 1)
+    quote Calculating strict consensus... ;
+    nelsen*;      /*  calculate strict consensus   */
+    tchoose {strict};
+    tsave out_TNT/Round_Consensus2.tmp ;
+    save;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map2.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree2.tre ;
+    tt-;    
+    quote Consensus tree saved ;
+    keep 0;
+else
+    quote Last tree... ;
+    tsave out_TNT/Round_Consensus2.tmp ;
+    save 0;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map2.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree2.tre ;
+    tt-;    
+    quote Last tree saved ;
+    keep 0;
+end;    
+
+/* ====================================================================== */
+/* CALCULATE AND SAVE COMPLETE CI/RI STATISTICS                          */
+/* ====================================================================== */
+
+quote
+----------------------------------------------------------------------------
+Tree Statistics:
+----------------------------------------------------------------------------
+;
+
+/* get the tree */
+short out_TNT/Round_Consensus2.tmp;
+
+set THEMINtree minsteps;
+set THEMAXtree maxsteps;
+set THIStree length[0];
+
+log+ out_TNT/Round_CI_RI_Table2.txt ;
+quote
+============================================================================
+        ROUND 2 - COMPLETE CI AND RI TABLE FOR ALL CHARACTERS
+============================================================================
+
+Character | CI    | RI    | RC    | Status
+----------|-------|-------|-------|----------------------------------
+;
+
+/* Loop through all characters and print CI/RI */
+loop 0 ('num_chars' - 1) ;    
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end;
+
+        /* Calculate RI */
+        if (('themaxchar'-'theminchar') == 0)
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end;
+
+        /* Calculate RC */
+        set rc_val[#1]  'ri_val[#1]'*'ci_val[#1]';
+
+        /* Print character info */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | NON-HOMOPLASTIC SYNAPOMORPHY ;
+            else
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+            end;
+        else
+            quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote #1 | INACTIVE | INACTIVE | INACTIVE | Character deactivated in previous round;
+    end;
+stop;
+
+/* tree statistics (usando valores capturados anteriormente) */
+set CItree 'THEMINtree'/'THIStree';
+set RItree ('THEMAXtree'-'THIStree')/('THEMAXtree'-'THEMINtree');
+set RCtree 'RItree'*'CItree';
+
+log+ out_TNT/resul_CI_RI.log;
+
+quote
+============================================================================
+RUN_2, 'CItree', 'RItree', 'RCtree', 'THIStree';
+
+log/ ;
+
+/* ====================================================================== */
+/* IDENTIFY AND LIST NON-HOMOPLASTIC SYNAPOMORPHIES                      */
+/* ====================================================================== */
+
+log+ out_TNT/Round_Synapomorphies2.txt ;
+quote
+============================================================================
+ROUND 2 - NON-HOMOPLASTIC SYNAPOMORPHIES (CI=1, RI=1)
+============================================================================
+
+These characters (taxa/species) will be removed for the next round:
+
+Character(Taxon) | Run
+------------------------------------------------------------    
+;
+
+set removed_count 0;
+set conta 0;
+set contagem 0;
+
+/* Loop to identify and list synapomorphies */
+loop 0 ('num_chars' - 1) ;
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end ;
+
+        /* Calculate RI */
+        if ( ('themaxchar'-'theminchar') == 0 )
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end ;
+
+        set nome #1;
+
+        /* If CI=1 AND RI=1, it's a non-homoplastic synapomorphy */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote Character 'nome' | Run 2;
+                set conta ++;
+                set removed_count ++ ;
+            else
+                quote It is a homoplastic synapomorphy;
+            end;
+        else
+            quote It is a homoplastic synapomorphy;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote Character #1 is INACTIVE (deactivated in previous round);
+    end;            
+stop;
+
+if ('removed_count' > 0)
+    var: caraExtract['conta'];
+    loop 0 ('num_chars' - 1);
+        set char_i length[0 #1];
+        if ('char_i' > 0)
+            if ('ci_val[#1]' == 1)
+                if ('ri_val[#1]' == 1)
+                    set caraExtract['contagem'] #1;
+                    set all_deactivated['total_deactivated'] #1;
+                    set total_deactivated ++;
+                    set contagem ++;
+                    set total_removed ++;
+                else
+                    quote Not counted;
+                end;
+            else
+                quote Not counted;
+            end;
+        else
+            /* Character is INACTIVE - skip */
+            quote Character #1 is INACTIVE - not counted;
+        end;        
+    stop;
+
+    quote
+    ----------------------------------------------------------------------------
+    Total synapomorphies found: 'removed_count'
+    Characters removed:;
+    loop 0 ('conta' - 1) ;
+        quote character 'caraExtract[#1]';
+    stop;
+    
+    quote
+    ============================================================================
+    ;
+
+
+    set list_idx 0;
+    loop 0 ('total_deactivated' - 1) ;
+        ccode] 'all_deactivated['list_idx']';
+        quote Deactivating character 'all_deactivated['list_idx']';
+        set list_idx ++;
+    stop;
+
+    /* [OK] PROTECTION 2: Update num_chars after deactivation */
+    set num_chars nchar;
+
+    quote
+    ----------------------------------------------------------------------------
+    Round 2 Summary:
+    Characters removed this round: 'all_deactivated[0-('total_deactivated' - 1) &45]'
+    Total characters removed so far: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+    Active characters remaining: 'num_chars'
+    ----------------------------------------------------------------------------
+    ;
+    log/;
+
+    log+ out_TNT/PAE_PCE_Summary.txt;
+
+    quote
+    ================================================================================
+                        REACHED ITERATION NUMBER 2
+    ================================================================================
+    Maximum iterations (10)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+
+    Note: Analysis MIGHT BE stopped due to iteration limit.
+    Consider increasing max_iterations if more rounds are needed.
+    ================================================================================
+    ;
+    log/;
+else
+    log/;
+    quote
+    ============================================================================
+    STOPPING: No more non-homoplastic synapomorphies found in Round 2
+    ============================================================================
+    ;
+    
+    log+ out_TNT/PAE_PCE_Summary.txt;
+    quote
+    ================================================================================
+                        ANALYSIS COMPLETED SUCCESSFULLY
+    ================================================================================
+    Stopped at iteration: 2
+    Reason: No more non-homoplastic synapomorphies (CI=1, RI=1)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+    ================================================================================
+    ;
+    log/;
+    silent-;
+    report=;
+    proc/;
+end;
+
+/* ---------------- RUN 3 ----------------- */
+set theminchar 0;
+set themaxchar 1;
+
+cnames=;
+
+/* --------------ROUNDS------------------- */
+
+quote
+============================================================================
+                ROUND 3 - Starting iteration
+============================================================================
+;
+
+log out_TNT/Round_Output3.txt;
+
+quote
+============================================================================
+                ROUND 3 - PAE-PCE Iteration
+============================================================================
+;
+
+/* Clear memory */
+keep 0 ;
+ttags - ;
+rseed 0 ; 
+
+/* New tech search */  
+quote Running parsimony analysis... ;
+xmult= hits 7 rep 5 rss level 10;
+reroot [;
+
+/* Save most parsimonious trees */
+tsave *out_TNT/Round_MPT3.tre ;
+save ;
+tsave / ;
+quote Most parsimonious trees saved ;
+
+/* Calculate strict consensus */
+if ((ntrees+1) > 1)
+    quote Calculating strict consensus... ;
+    nelsen*;      /*  calculate strict consensus   */
+    tchoose {strict};
+    tsave out_TNT/Round_Consensus3.tmp ;
+    save;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map3.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree3.tre ;
+    tt-;    
+    quote Consensus tree saved ;
+    keep 0;
+else
+    quote Last tree... ;
+    tsave out_TNT/Round_Consensus3.tmp ;
+    save 0;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map3.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree3.tre ;
+    tt-;    
+    quote Last tree saved ;
+    keep 0;
+end;    
+
+/* ====================================================================== */
+/* CALCULATE AND SAVE COMPLETE CI/RI STATISTICS                          */
+/* ====================================================================== */
+
+quote
+----------------------------------------------------------------------------
+Tree Statistics:
+----------------------------------------------------------------------------
+;
+
+/* get the tree */
+short out_TNT/Round_Consensus3.tmp;
+
+set THEMINtree minsteps;
+set THEMAXtree maxsteps;
+set THIStree length[0];
+
+log+ out_TNT/Round_CI_RI_Table3.txt ;
+quote
+============================================================================
+        ROUND 3 - COMPLETE CI AND RI TABLE FOR ALL CHARACTERS
+============================================================================
+
+Character | CI    | RI    | RC    | Status
+----------|-------|-------|-------|----------------------------------
+;
+
+/* Loop through all characters and print CI/RI */
+loop 0 ('num_chars' - 1) ;    
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end;
+
+        /* Calculate RI */
+        if (('themaxchar'-'theminchar') == 0)
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end;
+
+        /* Calculate RC */
+        set rc_val[#1]  'ri_val[#1]'*'ci_val[#1]';
+
+        /* Print character info */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | NON-HOMOPLASTIC SYNAPOMORPHY ;
+            else
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+            end;
+        else
+            quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote #1 | INACTIVE | INACTIVE | INACTIVE | Character deactivated in previous round;
+    end;
+stop;
+
+/* tree statistics (usando valores capturados anteriormente) */
+set CItree 'THEMINtree'/'THIStree';
+set RItree ('THEMAXtree'-'THIStree')/('THEMAXtree'-'THEMINtree');
+set RCtree 'RItree'*'CItree';
+
+log+ out_TNT/resul_CI_RI.log;
+
+quote
+============================================================================
+RUN_3, 'CItree', 'RItree', 'RCtree', 'THIStree';
+
+log/ ;
+
+/* ====================================================================== */
+/* IDENTIFY AND LIST NON-HOMOPLASTIC SYNAPOMORPHIES                      */
+/* ====================================================================== */
+
+log+ out_TNT/Round_Synapomorphies3.txt ;
+quote
+============================================================================
+ROUND 3 - NON-HOMOPLASTIC SYNAPOMORPHIES (CI=1, RI=1)
+============================================================================
+
+These characters (taxa/species) will be removed for the next round:
+
+Character(Taxon) | Run
+------------------------------------------------------------    
+;
+
+set removed_count 0;
+set conta 0;
+set contagem 0;
+
+/* Loop to identify and list synapomorphies */
+loop 0 ('num_chars' - 1) ;
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end ;
+
+        /* Calculate RI */
+        if ( ('themaxchar'-'theminchar') == 0 )
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end ;
+
+        set nome #1;
+
+        /* If CI=1 AND RI=1, it's a non-homoplastic synapomorphy */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote Character 'nome' | Run 3;
+                set conta ++;
+                set removed_count ++ ;
+            else
+                quote It is a homoplastic synapomorphy;
+            end;
+        else
+            quote It is a homoplastic synapomorphy;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote Character #1 is INACTIVE (deactivated in previous round);
+    end;            
+stop;
+
+if ('removed_count' > 0)
+    var: caraExtract['conta'];
+    loop 0 ('num_chars' - 1);
+        set char_i length[0 #1];
+        if ('char_i' > 0)
+            if ('ci_val[#1]' == 1)
+                if ('ri_val[#1]' == 1)
+                    set caraExtract['contagem'] #1;
+                    set all_deactivated['total_deactivated'] #1;
+                    set total_deactivated ++;
+                    set contagem ++;
+                    set total_removed ++;
+                else
+                    quote Not counted;
+                end;
+            else
+                quote Not counted;
+            end;
+        else
+            /* Character is INACTIVE - skip */
+            quote Character #1 is INACTIVE - not counted;
+        end;        
+    stop;
+
+    quote
+    ----------------------------------------------------------------------------
+    Total synapomorphies found: 'removed_count'
+    Characters removed:;
+    loop 0 ('conta' - 1) ;
+        quote character 'caraExtract[#1]';
+    stop;
+    
+    quote
+    ============================================================================
+    ;
+
+
+    set list_idx 0;
+    loop 0 ('total_deactivated' - 1) ;
+        ccode] 'all_deactivated['list_idx']';
+        quote Deactivating character 'all_deactivated['list_idx']';
+        set list_idx ++;
+    stop;
+
+    /* [OK] PROTECTION 2: Update num_chars after deactivation */
+    set num_chars nchar;
+
+    quote
+    ----------------------------------------------------------------------------
+    Round 3 Summary:
+    Characters removed this round: 'all_deactivated[0-('total_deactivated' - 1) &45]'
+    Total characters removed so far: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+    Active characters remaining: 'num_chars'
+    ----------------------------------------------------------------------------
+    ;
+    log/;
+
+    log+ out_TNT/PAE_PCE_Summary.txt;
+
+    quote
+    ================================================================================
+                        REACHED ITERATION NUMBER 3
+    ================================================================================
+    Maximum iterations (10)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+
+    Note: Analysis MIGHT BE stopped due to iteration limit.
+    Consider increasing max_iterations if more rounds are needed.
+    ================================================================================
+    ;
+    log/;
+else
+    log/;
+    quote
+    ============================================================================
+    STOPPING: No more non-homoplastic synapomorphies found in Round 3
+    ============================================================================
+    ;
+    
+    log+ out_TNT/PAE_PCE_Summary.txt;
+    quote
+    ================================================================================
+                        ANALYSIS COMPLETED SUCCESSFULLY
+    ================================================================================
+    Stopped at iteration: 3
+    Reason: No more non-homoplastic synapomorphies (CI=1, RI=1)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+    ================================================================================
+    ;
+    log/;
+    silent-;
+    report=;
+    proc/;
+end;
+
+/* ---------------- RUN 4 ----------------- */
+set theminchar 0;
+set themaxchar 1;
+
+cnames=;
+
+/* --------------ROUNDS------------------- */
+
+quote
+============================================================================
+                ROUND 4 - Starting iteration
+============================================================================
+;
+
+log out_TNT/Round_Output4.txt;
+
+quote
+============================================================================
+                ROUND 4 - PAE-PCE Iteration
+============================================================================
+;
+
+/* Clear memory */
+keep 0 ;
+ttags - ;
+rseed 0 ; 
+
+/* New tech search */  
+quote Running parsimony analysis... ;
+xmult= hits 7 rep 5 rss level 10;
+reroot [;
+
+/* Save most parsimonious trees */
+tsave *out_TNT/Round_MPT4.tre ;
+save ;
+tsave / ;
+quote Most parsimonious trees saved ;
+
+/* Calculate strict consensus */
+if ((ntrees+1) > 1)
+    quote Calculating strict consensus... ;
+    nelsen*;      /*  calculate strict consensus   */
+    tchoose {strict};
+    tsave out_TNT/Round_Consensus4.tmp ;
+    save;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map4.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree4.tre ;
+    tt-;    
+    quote Consensus tree saved ;
+    keep 0;
+else
+    quote Last tree... ;
+    tsave out_TNT/Round_Consensus4.tmp ;
+    save 0;
+    tsave/;      /*  close file with saved consensus   */
+    tt-;
+    ttags = ;
+    apo ] ;
+    ttag & out_TNT/Round_Map4.svg ;
+    taxname=;
+    export - out_TNT/Round_Tree4.tre ;
+    tt-;    
+    quote Last tree saved ;
+    keep 0;
+end;    
+
+/* ====================================================================== */
+/* CALCULATE AND SAVE COMPLETE CI/RI STATISTICS                          */
+/* ====================================================================== */
+
+quote
+----------------------------------------------------------------------------
+Tree Statistics:
+----------------------------------------------------------------------------
+;
+
+/* get the tree */
+short out_TNT/Round_Consensus4.tmp;
+
+set THEMINtree minsteps;
+set THEMAXtree maxsteps;
+set THIStree length[0];
+
+log+ out_TNT/Round_CI_RI_Table4.txt ;
+quote
+============================================================================
+        ROUND 4 - COMPLETE CI AND RI TABLE FOR ALL CHARACTERS
+============================================================================
+
+Character | CI    | RI    | RC    | Status
+----------|-------|-------|-------|----------------------------------
+;
+
+/* Loop through all characters and print CI/RI */
+loop 0 ('num_chars' - 1) ;    
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end;
+
+        /* Calculate RI */
+        if (('themaxchar'-'theminchar') == 0)
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end;
+
+        /* Calculate RC */
+        set rc_val[#1]  'ri_val[#1]'*'ci_val[#1]';
+
+        /* Print character info */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | NON-HOMOPLASTIC SYNAPOMORPHY ;
+            else
+                quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+            end;
+        else
+            quote #1 | 'ci_val[#1]' | 'ri_val[#1]' | 'rc_val[#1]' | Homoplastic ;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote #1 | INACTIVE | INACTIVE | INACTIVE | Character deactivated in previous round;
+    end;
+stop;
+
+/* tree statistics (usando valores capturados anteriormente) */
+set CItree 'THEMINtree'/'THIStree';
+set RItree ('THEMAXtree'-'THIStree')/('THEMAXtree'-'THEMINtree');
+set RCtree 'RItree'*'CItree';
+
+log+ out_TNT/resul_CI_RI.log;
+
+quote
+============================================================================
+RUN_4, 'CItree', 'RItree', 'RCtree', 'THIStree';
+
+log/ ;
+
+/* ====================================================================== */
+/* IDENTIFY AND LIST NON-HOMOPLASTIC SYNAPOMORPHIES                      */
+/* ====================================================================== */
+
+log+ out_TNT/Round_Synapomorphies4.txt ;
+quote
+============================================================================
+ROUND 4 - NON-HOMOPLASTIC SYNAPOMORPHIES (CI=1, RI=1)
+============================================================================
+
+These characters (taxa/species) will be removed for the next round:
+
+Character(Taxon) | Run
+------------------------------------------------------------    
+;
+
+set removed_count 0;
+set conta 0;
+set contagem 0;
+
+/* Loop to identify and list synapomorphies */
+loop 0 ('num_chars' - 1) ;
+    set char_i length[0 #1];
+
+    if ('char_i' > 0)
+        set themaxchar maxsteps[#1] ;
+        set theminchar minsteps[#1] ;
+
+        /* Calculate CI */
+        if ('char_i' == 0)
+            set ci_val[#1] 1 ;
+        else
+            set ci_val[#1] 'theminchar'/'char_i' ;
+        end ;
+
+        /* Calculate RI */
+        if ( ('themaxchar'-'theminchar') == 0 )
+            set ri_val[#1] 1 ;
+        else
+            set ri_val[#1] ('themaxchar'-'char_i')/('themaxchar'-'theminchar') ;
+        end ;
+
+        set nome #1;
+
+        /* If CI=1 AND RI=1, it's a non-homoplastic synapomorphy */
+        if ('ci_val[#1]' == 1)
+            if ('ri_val[#1]' == 1)
+                quote Character 'nome' | Run 4;
+                set conta ++;
+                set removed_count ++ ;
+            else
+                quote It is a homoplastic synapomorphy;
+            end;
+        else
+            quote It is a homoplastic synapomorphy;
+        end;
+    else
+        /* Character is INACTIVE - skip */
+        quote Character #1 is INACTIVE (deactivated in previous round);
+    end;            
+stop;
+
+if ('removed_count' > 0)
+    var: caraExtract['conta'];
+    loop 0 ('num_chars' - 1);
+        set char_i length[0 #1];
+        if ('char_i' > 0)
+            if ('ci_val[#1]' == 1)
+                if ('ri_val[#1]' == 1)
+                    set caraExtract['contagem'] #1;
+                    set all_deactivated['total_deactivated'] #1;
+                    set total_deactivated ++;
+                    set contagem ++;
+                    set total_removed ++;
+                else
+                    quote Not counted;
+                end;
+            else
+                quote Not counted;
+            end;
+        else
+            /* Character is INACTIVE - skip */
+            quote Character #1 is INACTIVE - not counted;
+        end;        
+    stop;
+
+    quote
+    ----------------------------------------------------------------------------
+    Total synapomorphies found: 'removed_count'
+    Characters removed:;
+    loop 0 ('conta' - 1) ;
+        quote character 'caraExtract[#1]';
+    stop;
+    
+    quote
+    ============================================================================
+    ;
+
+
+    set list_idx 0;
+    loop 0 ('total_deactivated' - 1) ;
+        ccode] 'all_deactivated['list_idx']';
+        quote Deactivating character 'all_deactivated['list_idx']';
+        set list_idx ++;
+    stop;
+
+    /* [OK] PROTECTION 2: Update num_chars after deactivation */
+    set num_chars nchar;
+
+    quote
+    ----------------------------------------------------------------------------
+    Round 4 Summary:
+    Characters removed this round: 'all_deactivated[0-('total_deactivated' - 1) &45]'
+    Total characters removed so far: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+    Active characters remaining: 'num_chars'
+    ----------------------------------------------------------------------------
+    ;
+    log/;
+
+    log+ out_TNT/PAE_PCE_Summary.txt;
+
+    quote
+    ================================================================================
+                        REACHED ITERATION NUMBER 4
+    ================================================================================
+    Maximum iterations (10)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+
+    Note: Analysis has stopped due to iteration limit.
+    Consider increasing max_iterations if more rounds are needed.
+    ================================================================================
+    ;
+    log/;
+else
+    log/;
+    quote
+    ============================================================================
+    STOPPING: No more non-homoplastic synapomorphies found in Round 4
+    ============================================================================
+    ;
+    
+    log+ out_TNT/PAE_PCE_Summary.txt;
+    quote
+    ================================================================================
+                        ANALYSIS COMPLETED SUCCESSFULLY
+    ================================================================================
+    Stopped at iteration: 4
+    Reason: No more non-homoplastic synapomorphies (CI=1, RI=1)
+    Total characters removed: 'total_removed'
+    Total cumulative deactivated: 'total_deactivated'
+    ================================================================================
+    ;
+    log/;
+    silent-;
+    report=;
+    proc/;
+end;
+silent-;
+report=;
+proc/;

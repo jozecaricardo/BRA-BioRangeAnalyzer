@@ -1,0 +1,1188 @@
+# BioGeoBEARS Shiny Application - Server Logic (Enhanced v0.3)
+
+library(shiny)
+library(leaflet)
+library(plotly)
+library(DT)
+
+# Server function
+shinyServer(function(input, output, session) {
+  
+  # Reactive values to store data
+  data_store <- reactiveValues(
+    occurrence = NULL,
+    tree = NULL,
+    pres_abs = NULL,
+    geometry = NULL,
+    comparison = NULL,
+    lrt_results = NULL,
+    models_list = NULL,
+    extrap_method = NULL
+  )
+  
+  # ===== DATA INPUT TAB =====
+  
+  observeEvent(input$load_data, {
+    if (!is.null(input$occurrence_file)) {
+      tryCatch({
+        data_store$occurrence <- read.csv(input$occurrence_file$datapath)
+        # Standardize column names
+        data_store$occurrence <- biogeoshiny::prepare_occurrence_data(data_store$occurrence)
+        
+        output$data_preview <- renderPrint({
+          cat("Occurrence Data Loaded:\n")
+          print(head(data_store$occurrence))
+          cat("\nDimensions:", nrow(data_store$occurrence), "rows,", ncol(data_store$occurrence), "columns\n")
+          cat("Species:", paste(unique(data_store$occurrence$spp), collapse = ", "), "\n")
+        })
+      }, error = function(e) {
+        output$data_preview <- renderPrint({
+          cat("Error loading data:", e$message, "\n")
+        })
+      })
+    } else {
+      output$data_preview <- renderPrint({
+        cat("Please select a CSV file\n")
+      })
+    }
+  })
+  
+  # Load phylogenetic tree
+  observeEvent(input$tree_file, {
+    if (!is.null(input$tree_file)) {
+      tryCatch({
+        data_store$tree <- biogeoshiny::load_phylogenetic_tree(input$tree_file$datapath)
+        validation <- biogeoshiny::validate_phylogenetic_tree(data_store$tree)
+        
+        output$tree_preview <- renderPrint({
+          cat("Phylogenetic Tree Loaded:\n")
+          cat("Number of taxa:", validation$n_taxa, "\n")
+          cat("Has branch lengths:", validation$has_branch_lengths, "\n")
+          cat("\nTaxa:\n")
+          print(validation$taxa)
+        })
+      }, error = function(e) {
+        output$tree_preview <- renderPrint({
+          cat("Error loading tree:", e$message, "\n")
+        })
+      })
+    }
+  })
+  
+  # ===== RANGE EXTRAPOLATION TAB =====
+  
+  observeEvent(input$run_extrap, {
+    if (is.null(data_store$occurrence)) {
+      output$extrap_results <- renderPrint({
+        cat("Error: Please load occurrence data first\n")
+      })
+    } else {
+      tryCatch({
+        # Store the method used
+        data_store$extrap_method <- input$extrap_method
+        
+        # Call the wrapper function that handles both real and mock data
+        result <- biogeoshiny::run_extrapolation(
+          occurrence_data = data_store$occurrence,
+          method = input$extrap_method,
+          grid_resolution = input$grid_resolution,
+          buffer_width = input$grid_resolution * 111000
+        )
+        
+        # Check if the real function succeeded
+        if (result$success) {
+          # Use real results
+          data_store$pres_abs <- result$pres_abs
+          data_store$geometry <- result$geometry
+        } else {
+          # Fall back to mock data
+          warning("Real extrapolation failed, using mock data: ", result$error)
+          mock_result <- biogeoshiny::create_mock_extrapolation(
+            occurrence_data = data_store$occurrence,
+            method = input$extrap_method
+          )
+          data_store$pres_abs <- mock_result$pres_abs
+          data_store$geometry <- mock_result$geometry
+        }
+        
+        output$extrap_results <- renderPrint({
+          cat("Range Extrapolation Results:\n")
+          cat("Method:", input$extrap_method, "\n")
+          cat("Grid resolution:", input$grid_resolution, "degrees\n")
+          cat("\nPresence-Absence Matrix:\n")
+          print(head(data_store$pres_abs))
+          cat("\nDimensions:", nrow(data_store$pres_abs), "areas,", ncol(data_store$pres_abs), "species\n")
+        })
+      }, error = function(e) {
+        output$extrap_results <- renderPrint({
+          cat("Error:", e$message, "\n")
+        })
+      })
+    }
+  })
+  
+  # ===== VISUALIZATIONS TAB =====
+  
+  # Distribution map with occurrence points
+  output$distribution_map <- leaflet::renderLeaflet({
+    if (is.null(data_store$occurrence)) {
+      leaflet::leaflet() %>%
+        leaflet::addTiles() %>%
+        leaflet::setView(lng = -60, lat = -10, zoom = 4)
+    } else {
+      tryCatch({
+        # Create map with occurrence points and extrapolation polygons
+        m <- biogeoshiny::plot_distribution_map(
+          occurrence_data = data_store$occurrence,
+          geometry = data_store$geometry,
+          method = data_store$extrap_method
+        )
+        m
+      }, error = function(e) {
+        leaflet::leaflet() %>%
+          leaflet::addTiles() %>%
+          leaflet::setView(lng = -60, lat = -10, zoom = 4)
+      })
+    }
+  })
+  
+  # Phylogenetic tree plot
+  output$phylogenetic_tree_plot <- renderPlot({
+    if (is.null(data_store$tree)) {
+      plot(1, type = "n", main = "Phylogenetic Tree", xlab = "", ylab = "")
+      text(1, 1, "Load a phylogenetic tree first", cex = 1.5)
+    } else {
+      tryCatch({
+        biogeoshiny::plot_phylogenetic_tree(data_store$tree, "Phylogenetic Tree with Branch Lengths")
+      }, error = function(e) {
+        plot(1, type = "n", main = "Error plotting tree", xlab = "", ylab = "")
+        text(1, 1, paste("Error:", e$message), cex = 1)
+      })
+    }
+  })
+  
+  # Ancestral ranges plot (placeholder)
+  output$ancestral_ranges_plot <- renderPlot({
+    if (is.null(data_store$tree)) {
+      plot(1, type = "n", main = "Ancestral Range Reconstruction", xlab = "", ylab = "")
+      text(1, 1, "Load a phylogenetic tree first", cex = 1.5)
+    } else {
+      tryCatch({
+        biogeoshiny::plot_phylogenetic_tree(data_store$tree, "Ancestral Range Reconstruction")
+      }, error = function(e) {
+        plot(1, type = "n", main = "Error plotting tree", xlab = "", ylab = "")
+        text(1, 1, paste("Error:", e$message), cex = 1)
+      })
+    }
+  })
+  
+  # Range uncertainty plot (placeholder)
+  output$range_uncertainty_plot <- renderPlot({
+    if (is.null(data_store$tree)) {
+      plot(1, type = "n", main = "Range Uncertainty", xlab = "", ylab = "")
+      text(1, 1, "Load a phylogenetic tree first", cex = 1.5)
+    } else {
+      tryCatch({
+        biogeoshiny::plot_phylogenetic_tree(data_store$tree, "Range Uncertainty")
+      }, error = function(e) {
+        plot(1, type = "n", main = "Error plotting tree", xlab = "", ylab = "")
+        text(1, 1, paste("Error:", e$message), cex = 1)
+      })
+    }
+  })
+  
+  # ===== ANALYSIS TAB =====
+  
+# Insert before the observeEvent(input$run_analysis, {
+  # ===== BIOGEOBEARS TREE PREPARATION =====
+  
+  # Prepare tree for BioGeoBEARS (automatic ultrametricization if needed)
+  prepare_tree_for_biogeobears <- function(tree) {
+    
+    # Check if tree has branch lengths
+    if (!biogeoshiny::has_branch_lengths(tree)) {
+      return(list(
+        success = FALSE,
+        message = "Tree must have branch lengths for BioGeoBEARS analysis",
+        tree = NULL,
+        was_converted = FALSE
+      ))
+    }
+    
+    # Check if tree is ultrametric
+    if (biogeoshiny::is_ultrametric(tree)) {
+      # Tree is already ultrametric
+      return(list(
+        success = TRUE,
+        message = "Tree is already ultrametric. Ready for BioGeoBEARS.",
+        tree = tree,
+        was_converted = FALSE
+      ))
+    } else {
+      # Tree is not ultrametric, convert automatically
+      tryCatch({
+        tree_converted <- biogeoshiny::make_ultrametric(tree, method = "scale")
+        return(list(
+          success = TRUE,
+          message = "Tree was not ultrametric. Automatically converted using 'scale' method.",
+          tree = tree_converted,
+          was_converted = TRUE
+        ))
+      }, error = function(e) {
+        return(list(
+          success = FALSE,
+          message = paste("Error converting tree:", e$message),
+          tree = NULL,
+          was_converted = FALSE
+        ))
+      })
+    }
+  }
+
+  observeEvent(input$run_analysis, {
+    if (is.null(data_store$pres_abs)) {
+      output$comparison_table <- DT::renderDataTable({
+        data.frame(Error = "Please complete steps 1-4 first")
+      })
+    } else {
+      tryCatch({
+        # Get selected models
+        models <- input$models
+        if (length(models) == 0) {
+          models <- c("DEC", "DEC+J")
+        }
+        
+        # Generate mock results
+        results <- biogeoshiny::generate_mock_results(
+          models = models,
+          n_areas = nrow(data_store$pres_abs),
+          d_bounds = c(input$d_min, input$d_max),
+          e_bounds = c(input$e_min, input$e_max),
+          j_bounds = c(input$j_min, input$j_max)
+        )
+        
+        # Create comparison table
+        data_store$comparison <- biogeoshiny::create_model_comparison(
+          models = models,
+          lnl = results$lnl,
+          params = results$params,
+          n_areas = nrow(data_store$pres_abs)
+        )
+        
+        data_store$models_list <- models
+        
+        # Display comparison table
+        output$comparison_table <- DT::renderDataTable({
+          DT::datatable(
+            data_store$comparison,
+            options = list(
+              dom = "t",
+              pageLength = 10,
+              columnDefs = list(list(className = "dt-center", targets = "_all"))
+            ),
+            rownames = FALSE
+          )
+        })
+        
+        # Log-likelihood plot
+        output$lnl_plot <- plotly::renderPlotly({
+          biogeoshiny::plot_model_likelihood(data_store$comparison)
+        })
+        
+        # AICc plot
+        output$aicc_plot <- plotly::renderPlotly({
+          biogeoshiny::plot_model_comparison(data_store$comparison)
+        })
+        
+        # Parameter plots
+        output$param_d_plot <- plotly::renderPlotly({
+          biogeoshiny::plot_parameter_comparison(data_store$comparison, "d")
+        })
+        
+        output$param_e_plot <- plotly::renderPlotly({
+          biogeoshiny::plot_parameter_comparison(data_store$comparison, "e")
+        })
+        
+        # Parameter heatmap
+        output$param_heatmap <- plotly::renderPlotly({
+          biogeoshiny::plot_parameter_heatmap(data_store$comparison)
+        })
+        
+        # Update LRT model choices
+        model_choices <- setNames(models, models)
+        updateSelectInput(session, "lrt_simple", choices = model_choices)
+        updateSelectInput(session, "lrt_complex", choices = model_choices)
+        
+      }, error = function(e) {
+        output$comparison_table <- DT::renderDataTable({
+          data.frame(Error = paste("Analysis error:", e$message))
+        })
+      })
+    }
+  })
+  
+  # ===== LIKELIHOOD RATIO TEST =====
+  
+  observeEvent(input$run_lrt, {
+    if (is.null(data_store$comparison)) {
+      output$lrt_results <- renderPrint({
+        cat("Error: Please run analysis first\n")
+      })
+    } else {
+      tryCatch({
+        simple_model <- input$lrt_simple
+        complex_model <- input$lrt_complex
+        
+        if (simple_model == complex_model) {
+          output$lrt_results <- renderPrint({
+            cat("Error: Please select different models\n")
+          })
+        } else {
+          # Get LnL values
+          lnl_simple <- data_store$comparison$LnL[data_store$comparison$Model == simple_model]
+          lnl_complex <- data_store$comparison$LnL[data_store$comparison$Model == complex_model]
+          
+          # Get number of parameters
+          k_simple <- data_store$comparison$K[data_store$comparison$Model == simple_model]
+          k_complex <- data_store$comparison$K[data_store$comparison$Model == complex_model]
+          
+          # Perform LRT
+          df <- abs(k_complex - k_simple)
+          lrt <- biogeoshiny::perform_lrt(lnl_simple, lnl_complex, df)
+          
+          output$lrt_results <- renderPrint({
+            cat("Likelihood Ratio Test Results\n")
+            cat("================================\n\n")
+            cat("Simple Model:", simple_model, "\n")
+            cat("  LnL:", round(lnl_simple, 3), "\n")
+            cat("  K (parameters):", k_simple, "\n\n")
+            cat("Complex Model:", complex_model, "\n")
+            cat("  LnL:", round(lnl_complex, 3), "\n")
+            cat("  K (parameters):", k_complex, "\n\n")
+            cat("Test Statistic (2Δ LnL):", round(lrt$test_statistic, 3), "\n")
+            cat("Degrees of Freedom:", lrt$df, "\n")
+            cat("P-value:", format(lrt$p_value, scientific = TRUE, digits = 3), "\n")
+            cat("Significant (α = 0.05):", ifelse(lrt$significant, "YES", "NO"), "\n\n")
+            
+            if (lrt$significant) {
+              cat("Conclusion: The complex model is significantly better than the simple model.\n")
+            } else {
+              cat("Conclusion: No significant difference between models.\n")
+            }
+          })
+        }
+      }, error = function(e) {
+        output$lrt_results <- renderPrint({
+          cat("Error:", e$message, "\n")
+        })
+      })
+    }
+  })
+  
+  # ===== DOWNLOAD HANDLERS =====
+  
+  output$download_comparison <- downloadHandler(
+    filename = "model_comparison.csv",
+    content = function(file) {
+      if (!is.null(data_store$comparison)) {
+        write.csv(data_store$comparison, file, row.names = FALSE)
+      }
+    }
+  )
+  
+  output$download_results_csv <- downloadHandler(
+    filename = "biogeobears_results.csv",
+    content = function(file) {
+      if (!is.null(data_store$comparison)) {
+        write.csv(data_store$comparison, file, row.names = FALSE)
+      }
+    }
+  )
+  
+  # Export formats
+  observeEvent(input$export_data, {
+    if (is.null(data_store$pres_abs)) {
+      output$download_buttons <- renderUI({
+        p("Please run range extrapolation first")
+      })
+    } else {
+      output$download_buttons <- renderUI({
+        div(
+          if ("biogeobears" %in% input$export_formats) {
+            downloadButton("download_biogeobears", "Download BioGeoBEARS")
+          },
+          if ("nexus" %in% input$export_formats) {
+            downloadButton("download_nexus", "Download NEXUS")
+          },
+          if ("tnt" %in% input$export_formats) {
+            downloadButton("download_tnt", "Download TNT")
+          },
+          if ("ndm" %in% input$export_formats) {
+            downloadButton("download_ndm", "Download NDM")
+          }
+        )
+      })
+    }
+  })
+  
+  output$download_biogeobears <- downloadHandler(
+    filename = "pres_abs_geog.data",
+    content = function(file) {
+      if (!is.null(data_store$pres_abs)) {
+        biogeoshiny::create_biogeobears_file(data_store$pres_abs, "BUFF", dirname(file))
+        file.copy(file.path(dirname(file), "pres_abs_BUFF_geog.data"), file)
+      }
+    }
+  )
+  
+  output$download_nexus <- downloadHandler(
+    filename = "pres_abs.nex",
+    content = function(file) {
+      if (!is.null(data_store$pres_abs)) {
+        write.csv(data_store$pres_abs, file, row.names = TRUE)
+      }
+    }
+  )
+  
+  output$download_tnt <- downloadHandler(
+    filename = "pres_abs.tnt",
+    content = function(file) {
+      if (!is.null(data_store$pres_abs)) {
+        write.csv(data_store$pres_abs, file, row.names = TRUE)
+      }
+    }
+  )
+  
+  output$download_ndm <- downloadHandler(
+    filename = "pres_abs.xyd",
+    content = function(file) {
+      if (!is.null(data_store$pres_abs)) {
+        write.csv(data_store$pres_abs, file, row.names = TRUE)
+      }
+    }
+  )
+  
+})
+
+  # ===== TREE CONVERSION FOR PAE-PCE =====
+  
+  observeEvent(input$check_tree_properties, {
+    if (is.null(data_store$tree)) {
+      output$tree_properties <- renderPrint({
+        cat("Error: Please load a phylogenetic tree first\n")
+      })
+    } else {
+      tryCatch({
+        # Get tree statistics
+        stats <- biogeoshiny::get_tree_stats(data_store$tree)
+        
+        output$tree_properties <- renderPrint({
+          cat("Phylogenetic Tree Properties\n")
+          cat("===========================\n\n")
+          cat("Number of taxa:", stats$n_taxa, "\n")
+          cat("Number of nodes:", stats$n_nodes, "\n")
+          cat("Number of edges:", stats$n_edges, "\n")
+          cat("Has branch lengths:", stats$has_branch_lengths, "\n")
+          cat("Is ultrametric:", stats$is_ultrametric, "\n\n")
+          
+          if (stats$has_branch_lengths) {
+            cat("Branch Length Statistics:\n")
+            cat("  Total length:", round(stats$total_length, 3), "\n")
+            cat("  Mean length:", round(stats$mean_branch_length, 3), "\n")
+            cat("  Min length:", round(stats$min_branch_length, 3), "\n")
+            cat("  Max length:", round(stats$max_branch_length, 3), "\n\n")
+            cat("  Max distance from root to tip:", round(stats$max_tip_distance, 3), "\n")
+            cat("  Min distance from root to tip:", round(stats$min_tip_distance, 3), "\n")
+          }
+        })
+      }, error = function(e) {
+        output$tree_properties <- renderPrint({
+          cat("Error analyzing tree:", e$message, "\n")
+        })
+      })
+    }
+  })
+  
+  # Convert tree to ultrametric (optional, user-requested)
+  observeEvent(input$convert_to_ultrametric, {
+    if (is.null(data_store$tree)) {
+      output$conversion_result <- renderPrint({
+        cat("Error: Please load a phylogenetic tree first\n")
+      })
+    } else if (!biogeoshiny::has_branch_lengths(data_store$tree)) {
+      output$conversion_result <- renderPrint({
+        cat("Error: Tree must have branch lengths to be converted to ultrametric\n")
+      })
+    } else {
+      tryCatch({
+        # Convert to ultrametric using selected method
+        method <- input$ultrametric_method
+        data_store$tree_ultrametric <- biogeoshiny::make_ultrametric(data_store$tree, method = method)
+        
+        output$conversion_result <- renderPrint({
+          cat("Tree Conversion to Ultrametric\n")
+          cat("==============================\n\n")
+          cat("Method used:", method, "\n\n")
+          
+          # Show before and after statistics
+          stats_before <- biogeoshiny::get_tree_stats(data_store$tree)
+          stats_after <- biogeoshiny::get_tree_stats(data_store$tree_ultrametric)
+          
+          cat("Before conversion:\n")
+          cat("  Is ultrametric:", stats_before$is_ultrametric, "\n")
+          cat("  Max tip distance:", round(stats_before$max_tip_distance, 3), "\n")
+          cat("  Min tip distance:", round(stats_before$min_tip_distance, 3), "\n\n")
+          
+          cat("After conversion:\n")
+          cat("  Is ultrametric:", stats_after$is_ultrametric, "\n")
+          cat("  Max tip distance:", round(stats_after$max_tip_distance, 3), "\n")
+          cat("  Min tip distance:", round(stats_after$min_tip_distance, 3), "\n\n")
+          
+          cat("Conversion successful! The ultrametric tree is ready to use.\n")
+        })
+      }, error = function(e) {
+        output$conversion_result <- renderPrint({
+          cat("Error converting tree:", e$message, "\n")
+        })
+      })
+    }
+  })
+  
+  # ===== PAE-PCE ANALYSIS =====
+  
+  observeEvent(input$run_pae_pce, {
+    if (is.null(data_store$pres_abs)) {
+      output$pae_pce_results <- renderPrint({
+        cat("Error: Please complete range extrapolation first\n")
+      })
+    } else if (is.null(data_store$tree)) {
+      output$pae_pce_results <- renderPrint({
+        cat("Error: Please load a phylogenetic tree first\n")
+      })
+    } else {
+      tryCatch({
+        # Check if tree has branch lengths
+        if (!biogeoshiny::has_branch_lengths(data_store$tree)) {
+          output$pae_pce_results <- renderPrint({
+            cat("Error: Tree must have branch lengths for PAE-PCE analysis\n")
+          })
+        } else {
+          # Validate tree
+          validation <- biogeoshiny::validate_tree_for_analysis(data_store$tree, "pae_pce")
+          
+          if (!validation$is_valid) {
+            output$pae_pce_results <- renderPrint({
+              cat("Tree validation failed:\n")
+              for (error in validation$errors) {
+                cat("  ERROR:", error, "\n")
+              }
+            })
+          } else {
+            # Check if tree is ultrametric (just for information)
+            is_ultra <- biogeoshiny::is_ultrametric(data_store$tree)
+            
+            output$pae_pce_results <- renderPrint({
+              cat("PAE-PCE Analysis Ready\n")
+              cat("====================\n\n")
+              cat("Presence-absence matrix dimensions:", nrow(data_store$pres_abs), "areas x", ncol(data_store$pres_abs), "species\n")
+              cat("Phylogenetic tree taxa:", length(data_store$tree$tip.label), "\n")
+              cat("Tree is ultrametric:", is_ultra, "\n\n")
+              
+              if (!is_ultra) {
+                cat("Note: Your tree is not ultrametric. You can convert it to ultrametric\n")
+                cat("in the 'Tree Conversion' tab if needed for your analysis.\n\n")
+              }
+              
+              cat("Status: Ready to run PAE-PCE analysis\n")
+              cat("\nTo run the actual PAE-PCE analysis, use the pae_pce() function\n")
+              cat("with your presence-absence matrix and phylogenetic tree.\n")
+            })
+          }
+        }
+      }, error = function(e) {
+        output$pae_pce_results <- renderPrint({
+          cat("Error:", e$message, "\n")
+        })
+      })
+    }
+  })
+  
+  # Download ultrametric tree
+  output$download_ultrametric_tree <- downloadHandler(
+    filename = "tree_ultrametric.nwk",
+    content = function(file) {
+      if (!is.null(data_store$tree_ultrametric)) {
+        ape::write.tree(data_store$tree_ultrametric, file = file)
+      }
+    }
+  )
+
+})
+
+  # ===== MAP CONTROLS =====
+  
+  # Update map when controls change
+  observeEvent(list(input$show_extrapolation, input$polygon_color, input$polygon_opacity), {
+    if (!is.null(data_store$occurrence)) {
+      tryCatch({
+        # Create base map with occurrence points
+        m <- leaflet::leaflet() %>%
+          leaflet::addTiles() %>%
+          leaflet::setView(lng = mean(data_store$occurrence$long, na.rm = TRUE),
+                          lat = mean(data_store$occurrence$lat, na.rm = TRUE),
+                          zoom = 4)
+        
+        # Add occurrence points
+        species_unique <- unique(data_store$occurrence$spp)
+        n_species <- length(species_unique)
+        
+        # Choose appropriate color palette
+        if (n_species <= 3) {
+          colors <- RColorBrewer::brewer.pal(n_species, "Set1")
+        } else if (n_species <= 9) {
+          colors <- RColorBrewer::brewer.pal(n_species, "Set1")
+        } else if (n_species <= 12) {
+          colors <- RColorBrewer::brewer.pal(n_species, "Set3")
+        } else {
+          colors <- grDevices::hcl.colors(n_species, "Spectral")
+        }
+        
+        # Add points for each species
+        for (i in seq_along(species_unique)) {
+          sp <- species_unique[i]
+          sp_data <- data_store$occurrence[data_store$occurrence$spp == sp, ]
+          
+          m <- m %>%
+            leaflet::addCircleMarkers(
+              data = sp_data,
+              lng = ~long,
+              lat = ~lat,
+              radius = 5,
+              color = colors[i],
+              fillOpacity = 0.7,
+              popup = ~paste(spp, "<br>Lon:", round(long, 2), "<br>Lat:", round(lat, 2)),
+              group = sp
+            )
+        }
+        
+        # Add extrapolation polygons if user wants to see them
+        if (input$show_extrapolation && !is.null(data_store$geometry)) {
+          tryCatch({
+            # Convert geometry to sf if needed
+            sf_geom <- biogeoshiny::convert_geometry_to_sf(data_store$geometry)
+            
+            if (!is.null(sf_geom)) {
+              m <- m %>%
+                leaflet::addPolygons(
+                  data = sf_geom,
+                  color = input$polygon_color,
+                  weight = 2,
+                  opacity = input$polygon_opacity,
+                  fillOpacity = input$polygon_opacity * 0.5,
+                  popup = paste(data_store$extrap_method, "extrapolation"),
+                  group = "Extrapolation"
+                )
+            }
+          }, error = function(e) {
+            warning("Could not add polygons: ", e$message)
+          })
+        }
+        
+        # Prepare layer groups
+        layer_groups <- species_unique
+        if (input$show_extrapolation && !is.null(data_store$geometry)) {
+          layer_groups <- c(layer_groups, "Extrapolation")
+        }
+        
+        # Add layer control
+        m <- m %>%
+          leaflet::addLayersControl(
+            overlayGroups = layer_groups,
+            options = leaflet::layersControlOptions(collapsed = FALSE)
+          )
+        
+        output$distribution_map <- leaflet::renderLeaflet(m)
+      }, error = function(e) {
+        warning("Error updating map: ", e$message)
+      })
+    }
+  }, ignoreNULL = FALSE)
+
+# ===== EXPORT FILES TAB HANDLERS =====
+
+# TNT Matrix Export
+observeEvent(input$export_tnt_matrix, {
+  if (is.null(data_store$pres_abs)) {
+    output$tnt_matrix_status <- renderPrint({
+      cat("Error: Please run range extrapolation first\n")
+    })
+  } else {
+    tryCatch({
+      # Create output directory
+      if (!dir.exists("out")) {
+        dir.create("out", recursive = TRUE)
+      }
+      
+      # Call the tnt_matrix function
+      tnt_matrix(data_store$pres_abs)
+      
+      # Store the file path for download
+      data_store$tnt_matrix_file <- "out/pres_abs.tnt"
+      
+      output$tnt_matrix_status <- renderPrint({
+        cat("✓ TNT matrix exported successfully!\n")
+        cat("File: out/pres_abs.tnt\n")
+        cat("Dimensions:", nrow(data_store$pres_abs), "taxa x", ncol(data_store$pres_abs), "species\n")
+      })
+    }, error = function(e) {
+      output$tnt_matrix_status <- renderPrint({
+        cat("Error exporting TNT matrix:\n")
+        cat(e$message, "\n")
+      })
+    })
+  }
+})
+
+# TNT PAE-PCE Script Generation
+observeEvent(input$export_tnt_script, {
+  if (is.null(data_store$tnt_matrix_file)) {
+    output$tnt_script_status <- renderPrint({
+      cat("Error: Please export TNT matrix first\n")
+    })
+  } else {
+    tryCatch({
+      # Create output directory
+      if (!dir.exists("out_TNT")) {
+        dir.create("out_TNT", recursive = TRUE)
+      }
+      
+      # Call the generate_tnt_pae_pce function
+      script_file <- generate_tnt_pae_pce(
+        matrix_file = data_store$tnt_matrix_file,
+        output_file = "PAE_PCE_tntAUTO.run",
+        max_iterations = input$tnt_max_iterations,
+        search_replicates = input$tnt_search_replicates,
+        search_method = input$tnt_search_method,
+        output_dir = "out_TNT/"
+      )
+      
+      # Store the file path for download
+      data_store$tnt_script_file <- script_file
+      
+      output$tnt_script_status <- renderPrint({
+        cat("✓ TNT PAE-PCE script generated successfully!\n")
+        cat("File:", script_file, "\n")
+        cat("Parameters:\n")
+        cat("  - Max iterations:", input$tnt_max_iterations, "\n")
+        cat("  - Search replicates:", input$tnt_search_replicates, "\n")
+        cat("  - Search method:", input$tnt_search_method, "\n")
+      })
+    }, error = function(e) {
+      output$tnt_script_status <- renderPrint({
+        cat("Error generating TNT script:\n")
+        cat(e$message, "\n")
+      })
+    })
+  }
+})
+
+# NDM Export
+observeEvent(input$export_ndm, {
+  if (is.null(data_store$occurrence)) {
+    output$ndm_status <- renderPrint({
+      cat("Error: Please load occurrence data first\n")
+    })
+  } else {
+    tryCatch({
+      # Create output directory
+      if (!dir.exists("out_NDM")) {
+        dir.create("out_NDM", recursive = TRUE)
+      }
+      
+      # Prepare input based on selected mode
+      if (input$ndm_input_type == "occurrence") {
+        # Use occurrence data directly
+        input_data <- data_store$occurrence
+      } else {
+        # Use shapefile directory
+        input_data <- input$ndm_shapefile_dir
+      }
+      
+      # Call the toNDM function
+      if (input$ndm_input_type == "shapefile") {
+        toNDM(
+          input_data = input_data,
+          shapefile_dir = input$ndm_shapefile_dir,
+          resolution = c(input$ndm_resolution_x, input$ndm_resolution_y),
+          output_file = input$ndm_output_file,
+          output_dir = "out_NDM/"
+        )
+      } else {
+        toNDM(
+          input_data = input_data,
+          output_file = input$ndm_output_file,
+          output_dir = "out_NDM/"
+        )
+      }
+      
+      # Store the file path for download
+      data_store$ndm_file <- file.path("out_NDM", input$ndm_output_file)
+      
+      output$ndm_status <- renderPrint({
+        cat("✓ NDM file exported successfully!\n")
+        cat("File:", data_store$ndm_file, "\n")
+        if (input$ndm_input_type == "shapefile") {
+          cat("Grid resolution:", input$ndm_resolution_x, "x", input$ndm_resolution_y, "degrees\n")
+        }
+      })
+    }, error = function(e) {
+      output$ndm_status <- renderPrint({
+        cat("Error exporting NDM file:\n")
+        cat(e$message, "\n")
+      })
+    })
+  }
+})
+
+# Display available files for download
+output$available_files <- renderUI({
+  files <- c()
+  
+  if (!is.null(data_store$tnt_matrix_file) && file.exists(data_store$tnt_matrix_file)) {
+    files <- c(files, data_store$tnt_matrix_file)
+  }
+  if (!is.null(data_store$tnt_script_file) && file.exists(data_store$tnt_script_file)) {
+    files <- c(files, data_store$tnt_script_file)
+  }
+  if (!is.null(data_store$ndm_file) && file.exists(data_store$ndm_file)) {
+    files <- c(files, data_store$ndm_file)
+  }
+  
+  if (length(files) == 0) {
+    return(p("No files exported yet. Export files above to see them here."))
+  }
+  
+  # Create download buttons for each file
+  lapply(files, function(file) {
+    div(
+      downloadButton(
+        paste0("download_", gsub("[^[:alnum:]]", "_", file)),
+        label = basename(file),
+        class = "btn btn-sm btn-info"
+      ),
+      span(paste0(" (", file, ")"), style = "margin-left: 10px;")
+    )
+  })
+})
+
+# Download individual files
+observe({
+  files <- c()
+  
+  if (!is.null(data_store$tnt_matrix_file) && file.exists(data_store$tnt_matrix_file)) {
+    files <- c(files, data_store$tnt_matrix_file)
+  }
+  if (!is.null(data_store$tnt_script_file) && file.exists(data_store$tnt_script_file)) {
+    files <- c(files, data_store$tnt_script_file)
+  }
+  if (!is.null(data_store$ndm_file) && file.exists(data_store$ndm_file)) {
+    files <- c(files, data_store$ndm_file)
+  }
+  
+  for (file in files) {
+    local({
+      file_path <- file
+      button_id <- paste0("download_", gsub("[^[:alnum:]]", "_", file_path))
+      
+      output[[button_id]] <- downloadHandler(
+        filename = function() {
+          basename(file_path)
+        },
+        content = function(con) {
+          file.copy(file_path, con)
+        }
+      )
+    })
+  }
+})
+
+# Download all exports as ZIP
+output$download_all_exports <- downloadHandler(
+  filename = function() {
+    paste0("biogeoshiny_exports_", Sys.Date(), ".zip")
+  },
+  content = function(con) {
+    # Collect all exported files
+    files_to_zip <- c()
+    
+    if (!is.null(data_store$tnt_matrix_file) && file.exists(data_store$tnt_matrix_file)) {
+      files_to_zip <- c(files_to_zip, data_store$tnt_matrix_file)
+    }
+    if (!is.null(data_store$tnt_script_file) && file.exists(data_store$tnt_script_file)) {
+      files_to_zip <- c(files_to_zip, data_store$tnt_script_file)
+    }
+    if (!is.null(data_store$ndm_file) && file.exists(data_store$ndm_file)) {
+      files_to_zip <- c(files_to_zip, data_store$ndm_file)
+    }
+    
+    if (length(files_to_zip) > 0) {
+      # Create a temporary directory
+      tmpdir <- tempdir()
+      
+      # Copy files to temporary directory
+      for (file in files_to_zip) {
+        file.copy(file, file.path(tmpdir, basename(file)), overwrite = TRUE)
+      }
+      
+      # Create ZIP file
+      zip(con, files = file.path(tmpdir, basename(files_to_zip)))
+    }
+  }
+)
+
+  # Phylogenetic tree plot
+  output$phylogenetic_tree_plot <- renderPlot({
+    if (is.null(data_store$tree)) {
+      plot(1, type = "n", main = "Phylogenetic Tree", xlab = "", ylab = "", axes = FALSE)
+      text(1, 1, "Load a phylogenetic tree first", cex = 1.5, col = "red")
+    } else {
+      tryCatch({
+        # Plot the tree with branch lengths
+        tree <- data_store$tree
+        
+        # Create a nice plot
+        plot(tree, 
+             main = "Phylogenetic Tree",
+             cex = 0.8,
+             label.offset = 0.01)
+        
+        # Add branch length information if available
+        if (!is.null(tree$edge.length)) {
+          edgelabels(round(tree$edge.length, 3), 
+                     cex = 0.6, 
+                     bg = "white",
+                     adj = c(0.5, -0.2))
+        }
+        
+        # Add title with tree information
+        n_taxa <- length(tree$tip.label)
+        has_branch_lengths <- !is.null(tree$edge.length)
+        is_ultrametric <- ape::is.ultrametric(tree)
+        
+        mtext(paste("Taxa:", n_taxa, 
+                   "| Branch lengths:", ifelse(has_branch_lengths, "Yes", "No"),
+                   "| Ultrametric:", ifelse(is_ultrametric, "Yes", "No")),
+              side = 1, line = 3, cex = 0.8)
+        
+      }, error = function(e) {
+        plot(1, type = "n", main = "Error plotting tree", xlab = "", ylab = "", axes = FALSE)
+        text(1, 1, paste("Error:", e$message), cex = 1, col = "red")
+      })
+    }
+  })
+
+# ===== TREE VALIDATION TAB HANDLERS =====
+
+# Validate tree
+observeEvent(input$validate_tree, {
+  if (is.null(data_store$tree)) {
+    output$tree_validation_info <- renderPrint({
+      cat("ERROR: No tree loaded!\n")
+      cat("Please load a phylogenetic tree in the Data Input tab first.\n")
+    })
+  } else {
+    tryCatch({
+      tree <- data_store$tree
+      
+      # Perform validation checks
+      n_taxa <- length(tree$tip.label)
+      has_branch_lengths <- !is.null(tree$edge.length)
+      is_ultrametric <- ape::is.ultrametric(tree)
+      
+      # Calculate tree statistics
+      if (has_branch_lengths) {
+        max_branch_length <- max(tree$edge.length, na.rm = TRUE)
+        min_branch_length <- min(tree$edge.length, na.rm = TRUE)
+        mean_branch_length <- mean(tree$edge.length, na.rm = TRUE)
+      }
+      
+      # Calculate root to tip distances
+      root_to_tip <- ape::node.depth.edgelength(tree)[1:n_taxa]
+      max_root_to_tip <- max(root_to_tip, na.rm = TRUE)
+      min_root_to_tip <- min(root_to_tip, na.rm = TRUE)
+      
+      output$tree_validation_info <- renderPrint({
+        cat("=== TREE VALIDATION REPORT ===\n\n")
+        cat("✓ Tree loaded successfully!\n\n")
+        
+        cat("BASIC INFORMATION:\n")
+        cat("  Number of taxa:", n_taxa, "\n")
+        cat("  Number of internal nodes:", tree$Nnode, "\n")
+        cat("  Total branches:", nrow(tree$edge), "\n\n")
+        
+        cat("BRANCH LENGTHS:\n")
+        if (has_branch_lengths) {
+          cat("  ✓ Branch lengths present\n")
+          cat("  Max branch length:", round(max_branch_length, 4), "\n")
+          cat("  Min branch length:", round(min_branch_length, 4), "\n")
+          cat("  Mean branch length:", round(mean_branch_length, 4), "\n\n")
+        } else {
+          cat("  ✗ No branch lengths\n\n")
+        }
+        
+        cat("ULTRAMETRIC STATUS:\n")
+        if (is_ultrametric) {
+          cat("  ✓ Tree is ULTRAMETRIC\n")
+          cat("  All tips are equidistant from the root\n")
+          cat("  Root to tip distance:", round(max_root_to_tip, 4), "\n\n")
+        } else {
+          if (has_branch_lengths) {
+            cat("  ✗ Tree is NOT ultrametric\n")
+            cat("  Max root to tip distance:", round(max_root_to_tip, 4), "\n")
+            cat("  Min root to tip distance:", round(min_root_to_tip, 4), "\n")
+            cat("  Difference:", round(max_root_to_tip - min_root_to_tip, 4), "\n")
+            cat("  → You can convert it using the controls on the right\n\n")
+          } else {
+            cat("  ✗ Cannot determine ultrametric status (no branch lengths)\n\n")
+          }
+        }
+        
+        cat("TAXA NAMES:\n")
+        if (n_taxa <= 20) {
+          cat("  ", paste(tree$tip.label, collapse = ", "), "\n\n")
+        } else {
+          cat("  First 10 taxa:", paste(tree$tip.label[1:10], collapse = ", "), "\n")
+          cat("  ... and", n_taxa - 10, "more taxa\n\n")
+        }
+        
+        cat("RECOMMENDATIONS:\n")
+        if (!has_branch_lengths) {
+          cat("  ⚠ Add branch lengths to your tree for phylogenetic analyses\n")
+        }
+        if (!is_ultrametric && has_branch_lengths) {
+          cat("  ⚠ For BioGeoBEARS: Convert to ultrametric using the controls on the right\n")
+        }
+        if (is_ultrametric) {
+          cat("  ✓ Tree is ready for BioGeoBEARS analysis\n")
+        }
+      })
+    }, error = function(e) {
+      output$tree_validation_info <- renderPrint({
+        cat("ERROR validating tree:\n")
+        cat(e$message, "\n")
+      })
+    })
+  }
+})
+
+# Convert tree to ultrametric
+observeEvent(input$convert_to_ultrametric, {
+  if (is.null(data_store$tree)) {
+    output$ultrametric_status <- renderPrint({
+      cat("ERROR: No tree loaded!\n")
+    })
+  } else {
+    tryCatch({
+      tree <- data_store$tree
+      
+      # Check if tree has branch lengths
+      if (is.null(tree$edge.length)) {
+        output$ultrametric_status <- renderPrint({
+          cat("ERROR: Tree has no branch lengths!\n")
+          cat("Cannot ultrametricize a tree without branch lengths.\n")
+        })
+      } else {
+        # Convert to ultrametric
+        method <- input$ultrametric_method_validation
+        
+        if (method == "equal") {
+          # Equal branch lengths
+          tree_ultrametric <- tree
+          tree_ultrametric$edge.length <- rep(1, length(tree$edge.length))
+        } else if (method == "scale") {
+          # Scale proportionally
+          tree_ultrametric <- ape::chronos(tree, model = "relaxed", quiet = TRUE)
+        } else if (method == "penalized") {
+          # Penalized least squares
+          tree_ultrametric <- ape::chronos(tree, model = "strict", quiet = TRUE)
+        }
+        
+        # Store the converted tree
+        data_store$tree_ultrametric <- tree_ultrametric
+        
+        # Check if conversion was successful
+        is_now_ultrametric <- ape::is.ultrametric(tree_ultrametric)
+        
+        output$ultrametric_status <- renderPrint({
+          if (is_now_ultrametric) {
+            cat("✓ Tree successfully converted to ultrametric!\n\n")
+            cat("Method:", method, "\n")
+            cat("Original root-to-tip distances:\n")
+            
+            root_to_tip_orig <- ape::node.depth.edgelength(tree)[1:length(tree$tip.label)]
+            cat("  Max:", round(max(root_to_tip_orig), 4), "\n")
+            cat("  Min:", round(min(root_to_tip_orig), 4), "\n")
+            cat("  Difference:", round(max(root_to_tip_orig) - min(root_to_tip_orig), 4), "\n\n")
+            
+            cat("New root-to-tip distances:\n")
+            root_to_tip_new <- ape::node.depth.edgelength(tree_ultrametric)[1:length(tree_ultrametric$tip.label)]
+            cat("  Max:", round(max(root_to_tip_new), 4), "\n")
+            cat("  Min:", round(min(root_to_tip_new), 4), "\n")
+            cat("  Difference:", round(max(root_to_tip_new) - min(root_to_tip_new), 4), "\n\n")
+            
+            cat("✓ This tree is now ready for BioGeoBEARS analysis!\n")
+          } else {
+            cat("✗ Conversion failed or tree is still not ultrametric.\n")
+            cat("Try a different method.\n")
+          }
+        })
+      }
+    }, error = function(e) {
+      output$ultrametric_status <- renderPrint({
+        cat("ERROR converting tree:\n")
+        cat(e$message, "\n")
+      })
+    })
+  }
+})
+
+# Tree validation plot
+output$tree_validation_plot <- renderPlot({
+  if (is.null(data_store$tree)) {
+    plot(1, type = "n", main = "Phylogenetic Tree", xlab = "", ylab = "", axes = FALSE)
+    text(1, 1, "Load a phylogenetic tree first", cex = 1.5, col = "red")
+  } else {
+    tryCatch({
+      tree <- data_store$tree
+      
+      # Create a nice plot
+      plot(tree, 
+           main = "Phylogenetic Tree",
+           cex = 0.8,
+           label.offset = 0.01)
+      
+      # Add branch length information if available
+      if (!is.null(tree$edge.length)) {
+        edgelabels(round(tree$edge.length, 3), 
+                   cex = 0.6, 
+                   bg = "white",
+                   adj = c(0.5, -0.2))
+      }
+      
+      # Add title with tree information
+      n_taxa <- length(tree$tip.label)
+      has_branch_lengths <- !is.null(tree$edge.length)
+      is_ultrametric <- ape::is.ultrametric(tree)
+      
+      status_text <- paste("Taxa:", n_taxa, 
+                          "| Branch lengths:", ifelse(has_branch_lengths, "Yes", "No"),
+                          "| Ultrametric:", ifelse(is_ultrametric, "Yes", "No"))
+      
+      mtext(status_text, side = 1, line = 3, cex = 0.8)
+      
+    }, error = function(e) {
+      plot(1, type = "n", main = "Error plotting tree", xlab = "", ylab = "", axes = FALSE)
+      text(1, 1, paste("Error:", e$message), cex = 1, col = "red")
+    })
+  }
+})

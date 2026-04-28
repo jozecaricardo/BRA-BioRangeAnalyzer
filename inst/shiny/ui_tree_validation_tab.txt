@@ -1,0 +1,59 @@
+  # Tab 2.5: Tree Validation
+  tabPanel(
+    "Tree Validation",
+    icon = icon("check-circle"),
+    div(
+      class = "container-fluid",
+      style = "padding: 20px;",
+      div(
+        class = "step-title",
+        "Step 2: Validate Phylogenetic Tree"
+      ),
+      div(
+        class = "guidance-text",
+        p("Check your phylogenetic tree to ensure it is correctly loaded and has all necessary information.")
+      ),
+      
+      div(
+        class = "row",
+        div(
+          class = "col-md-6",
+          h4("Tree Information"),
+          actionButton("validate_tree", "Validate Tree", class = "btn btn-primary"),
+          br(), br(),
+          verbatimTextOutput("tree_validation_info")
+        ),
+        div(
+          class = "col-md-6",
+          h4("Ultrametricization (Optional)"),
+          p("If your tree has branch lengths but is not ultrametric, you can convert it here."),
+          p("This is useful for BioGeoBEARS analysis."),
+          br(),
+          selectInput(
+            "ultrametric_method_validation",
+            "Conversion method:",
+            choices = list(
+              "Equal lengths" = "equal",
+              "Scale proportionally" = "scale",
+              "Penalized least squares" = "penalized"
+            ),
+            selected = "scale"
+          ),
+          actionButton("convert_to_ultrametric", "Convert to Ultrametric", class = "btn btn-info"),
+          br(), br(),
+          verbatimTextOutput("ultrametric_status")
+        )
+      ),
+      
+      hr(),
+      
+      div(
+        class = "row",
+        div(
+          class = "col-md-12",
+          h4("Tree Visualization"),
+          plotOutput("tree_validation_plot", height = "600px")
+        )
+      )
+    )
+  ),

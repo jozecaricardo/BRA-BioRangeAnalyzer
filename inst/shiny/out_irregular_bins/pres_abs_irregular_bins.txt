@@ -1,0 +1,56 @@
+E_L_aceratos	E_L_circumfusus	E_L_cornutus	E_L_cribrarius	E_L_illotus	E_L_imitator	E_L_longicornis	E_L_machadus	E_L_picticornis	E_L_riograndensis	E_L_sharpi	E_L_triangulator
+Andean	0	0	0	0	0	0	0	0	0	0	0	0
+Araucaria Forest province	0	0	0	0	0	1	0	1	1	1	0	1
+Atacama province	0	0	0	0	0	0	0	0	0	0	0	0
+Atlantic province	1	0	1	0	0	1	1	1	1	0	1	1
+Bahama province	0	0	0	0	0	0	0	0	0	0	0	0
+Balsas Basin province	0	0	0	0	0	0	0	0	0	0	0	0
+Caatinga province	0	0	0	0	0	0	0	0	0	0	0	0
+Cayman Islands province	0	0	0	0	0	0	0	0	0	0	0	0
+Cerrado province	0	0	1	1	1	0	1	0	0	0	0	1
+Chaco province	0	0	1	0	1	0	0	0	0	0	1	0
+Chapada Diamantina province	0	0	0	0	0	0	0	0	0	0	0	0
+Chiapas Highlands province	0	0	0	0	0	0	0	0	0	0	0	0
+Choco-Darien province	0	0	0	0	0	0	0	0	0	0	0	0
+Comechingones province	0	0	0	0	0	0	0	0	0	0	0	0
+Cuban province	0	0	0	0	0	0	0	0	0	0	0	0
+Cuyan High Andean province	0	0	0	0	0	0	0	0	0	0	0	0
+Desert province	0	0	0	0	0	0	0	0	0	0	0	0
+Ecuadorian province	0	0	0	0	0	0	0	0	0	0	0	0
+Esteros del Ibera province	1	0	1	0	0	1	0	0	1	0	1	0
+Galapagos Islands province	0	0	0	0	0	0	0	0	0	0	0	0
+Guajira province	0	0	0	0	0	0	0	0	0	0	0	0
+Guatuso-Talamanca province	0	0	0	0	0	0	0	0	0	0	0	0
+Guianan Lowlands province	0	0	0	0	0	0	0	0	0	0	0	0
+Guianan province	0	0	0	0	0	0	0	0	0	0	0	0
+Hispaniola province	0	0	0	0	0	0	0	0	0	0	0	0
+Imeri province	0	0	0	0	0	0	0	0	0	0	0	0
+Jamaica province	0	0	0	0	0	0	0	0	0	0	0	0
+Lesser Antilles province	0	0	0	0	0	0	0	0	0	0	0	0
+Madeira province	0	0	0	0	0	0	0	0	0	0	0	0
+Mosquito province	0	0	0	0	0	0	0	0	0	0	0	0
+Napo province	0	0	0	0	0	0	0	0	0	0	0	0
+Pacific Lowlands province	0	0	0	0	0	0	0	0	0	0	0	0
+Pampean province	1	1	0	0	0	1	0	0	1	1	1	0
+Para province	0	0	0	0	0	0	1	0	0	0	0	0
+Parana Forest province	1	0	1	1	1	0	0	0	1	0	0	0
+Puerto Rico province	0	0	0	0	0	0	0	0	0	0	0	0
+Puna province	0	0	0	0	1	0	0	0	0	0	0	0
+Puntarenas-Chiriqui province	0	0	0	0	0	0	0	0	0	0	0	0
+Rondonia province	0	0	0	1	1	0	0	0	0	1	0	0
+Roraima province	0	0	0	0	0	0	0	0	0	0	0	0
+Sabana province	0	0	0	0	0	0	0	0	0	0	0	0
+Sierra Madre del Sur province	0	0	0	0	0	0	0	0	0	0	0	0
+Sierra Madre Occidental province	0	0	0	0	0	0	0	0	0	0	0	0
+Sierra Madre Oriental province	0	0	0	0	0	0	0	0	0	0	0	0
+Southern Espinhaco province	0	0	0	0	0	0	0	0	0	0	0	0
+Transmexican Volcanic Belt province	0	0	0	0	0	0	0	0	0	0	0	0
+Trinidad province	0	0	0	0	0	0	0	0	0	0	0	0
+Ucayali province	0	0	0	0	0	0	0	0	0	0	0	0
+Venezuelan province	0	0	0	0	0	0	0	0	0	0	0	0
+Veracruzan province	0	0	0	0	0	0	0	0	0	0	0	0
+Western Ecuador province	0	0	0	0	0	0	0	0	0	0	0	0
+Xingu-Tapajos province	0	0	0	0	0	0	0	0	0	0	0	0
+Yucatan Peninsula Province	0	0	0	0	0	0	0	0	0	0	0	0
+Yungas province	0	0	0	0	1	0	0	0	0	0	0	0
+ROOT	0	0	0	0	0	0	0	0	0	0	0	0

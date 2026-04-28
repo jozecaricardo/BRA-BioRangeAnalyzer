@@ -1,0 +1,24 @@
+Package: biogeoshiny
+Title: BioGeoBEARS Shiny Application for Ancestral Range Estimation
+Version: 0.1.0
+Authors@R: 
+    person("Manus", "AI", email = "manus@example.com", role = c("aut", "cre"))
+Description: A comprehensive Rshiny application for ancestral range estimation 
+    using BioGeoBEARS, with integrated range extrapolation methods and export 
+    capabilities for NDM, TNT, and NEXUS formats. Designed in the style of 
+    Wallace 2 for user-friendly biogeographic analysis.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports: shiny, shinydashboard, shinyjs, shinyWidgets, shinythemes,
+        leaflet, DT, ape, phangorn, TreeSearch, dplyr, tidyr, ggplot2, plotly, RColorBrewer,
+        BioGeoBEARS, raster, terra, sp, sf, geosphere
+Suggests: GenSA, FD, snow, parallel, rexpokit, cladoRcpp,
+        phytools, markdown, knitr,
+        testthat (>= 3.0.0)
+Depends: R (>= 4.0.0)
+NeedsCompilation: no
+Packaged: 2026-03-19 14:20:14 UTC; ubuntu
+Author: Manus AI [aut, cre]
+Maintainer: Manus AI <manus@example.com>

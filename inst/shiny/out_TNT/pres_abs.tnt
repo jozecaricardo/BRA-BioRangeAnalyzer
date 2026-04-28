@@ -1,0 +1,27 @@
+nstates num 32;
+xread
+14 6
+A 00100010010110
+B 10111111001100
+C 10110011001100
+D 00000000001100
+E 01111011111111
+F 11111101010000
+;
+cnames
+{0 Belostoma_estevezae;
+{1 Belostoma_lariversi_var1;
+{2 Belostoma_micantulum_var1;
+{3 Belostoma_micantulum_var2;
+{4 Belostoma_minusculum_var1;
+{5 Belostoma_minusculum_var2;
+{6 Belostoma_nessimiani;
+{7 Belostoma_nicaeum_var1;
+{8 Belostoma_nicaeum_var2;
+{9 Belostoma_parvum;
+{10 Belostoma_plebejum;
+{11 Belostoma_pygmeum_var1;
+{12 Belostoma_pygmeum_var2;
+{13 Belostoma_sp2;
+;
+proc/;
