@@ -158,7 +158,7 @@ shinyUI(
           class = "guidance-text",
           p("Inspect your phylogenetic tree and check branch-length availability."),
           p("Important: for BioGeoBEARS analyses, use an ultrametric and time-calibrated (dated) tree.", style = "color: #8a6d3b; font-weight: 600;"),
-          p("Tip: click 'Inspect Tree' to draw larger internal node labels for easier reading.", style = "font-size: 12px; color: #666;")
+          p("Tip: Use the checkbox to toggle node numbers. Zoom (mouse wheel), pan (drag), and hover to explore.", style = "font-size: 12px; color: #666;")
         ),
         div(
           class = "row",
@@ -172,7 +172,12 @@ shinyUI(
         ),
         br(),
         h4("Tree Visualization"),
-        plotOutput("tree_plot", height = "400px"),
+        div(
+          style = "margin-bottom: 10px;",
+          checkboxInput("show_node_labels", "Show internal node numbers", value = TRUE),
+          p("Tip: Uncheck to reduce visual clutter. Zoom with mouse wheel, pan with click+drag, hover to see node IDs.", style = "font-size: 11px; color: #666; margin-top: 5px;")
+        ),
+        ggiraph::girafeOutput("tree_plot", height = "650px"),
         br(),
         h4("Optional Clade Filter"),
         p("Optionally restrict downstream extrapolation to a single clade (all descendants of one internal node)."),
@@ -180,8 +185,18 @@ shinyUI(
         conditionalPanel(
           condition = "input.use_clade_filter == true",
           selectizeInput("clade_node_id", "Internal node ID:", choices = NULL, multiple = FALSE),
-          verbatimTextOutput("clade_filter_status")
-        )
+          verbatimTextOutput("clade_filter_status"),
+          br(),
+          h5("Clade Preview"),
+          div(
+            style = "margin-bottom: 10px;",
+            checkboxInput("show_clade_node_labels", "Show internal node numbers", value = TRUE),
+            p("Tip: Uncheck to reduce visual clutter. Zoom with mouse wheel, pan with click+drag, click node to see terminal taxa.", style = "font-size: 11px; color: #666; margin-top: 5px;")
+          ),
+          p("Interactive visualization of the selected clade:", style = "font-size: 11px; color: #666;"),
+          ggiraph::girafeOutput("clade_tree_plot", height = "600px")
+        ),
+
       )
     ),
     

@@ -134,6 +134,11 @@ function(input, output, session) {
   }
 
   show_tree_node_labels <- reactiveVal(FALSE)
+  
+  # Sync checkbox with reactive value
+  observeEvent(input$show_node_labels, {
+    show_tree_node_labels(isTRUE(input$show_node_labels))
+  })
 
   safe_valid_sf <- function(sf_obj, context_label = "geometry") {
     n_before <- nrow(sf_obj)
@@ -903,7 +908,7 @@ function(input, output, session) {
         }
 
         data_store$tree <- tree
-        show_tree_node_labels(FALSE)
+        shiny::updateCheckboxInput(session, "show_node_labels", value = FALSE)
 
         output$tree_load_status <- renderPrint({
           cat("✓ Tree loaded successfully!\n")
@@ -927,7 +932,7 @@ function(input, output, session) {
       })
     } else {
       tree <- data_store$tree
-      show_tree_node_labels(TRUE)
+      shiny::updateCheckboxInput(session, "show_node_labels", value = TRUE)
       output$tree_validation_output <- renderPrint({
         n_tips <- ape::Ntip(tree)
         n_nodes <- tree$Nnode %||% 0
@@ -947,43 +952,298 @@ function(input, output, session) {
     }
   })
   
-  output$tree_plot <- renderPlot({
+  output$tree_plot <- ggiraph::renderGirafe({
     if (is.null(data_store$tree)) {
-      plot(1, type = "n", main = "No tree loaded")
-    } else {
-      tree <- data_store$tree
-      n_tips <- ape::Ntip(tree)
-      n_nodes <- tree$Nnode %||% 0
-
-      if (isTRUE(show_tree_node_labels()) && n_nodes > 0) {
-        par(mar = c(2.5, 1.5, 5, 1))
-        ape::plot.phylo(
-          tree,
-          cex = 0.95,
-          lwd = 1.6,
-          edge.color = "#1f1f1f",
-          direction = "rightwards",
-          no.margin = FALSE,
-          main = "Phylogenetic Tree (internal nodes labeled)"
-        )
-        internal_nodes <- (n_tips + 1):(n_tips + n_nodes)
-        ape::nodelabels(
-          text = internal_nodes,
-          node = internal_nodes,
-          frame = "circle",
-          cex = 1.05,
-          col = "white",
-          bg = "#a61c1c",
-          adj = c(0.5, 0.5)
-        )
-        legend("bottomleft", legend = "Internal node IDs", pch = 21,
-               pt.bg = "#a61c1c", col = "white", pt.cex = 2.2, bty = "n")
-      } else {
-        par(mar = c(2.5, 1.5, 5, 1))
-        plot(tree, main = "Phylogenetic Tree", cex = 0.95)
-        mtext("Tip: click 'Inspect Tree' to show internal node numbers", side = 3, line = 0.2, cex = 0.85)
-      }
+      p <- ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No tree loaded", size = 6) +
+        ggplot2::theme_void()
+      return(ggiraph::girafe(ggobj = p, options = list(
+        ggiraph::opts_hover(css = "opacity:0.7;"),
+        ggiraph::opts_sizing(rescale = TRUE, width = 1)
+      )))
     }
+    
+    tree <- data_store$tree
+    n_tips <- ape::Ntip(tree)
+    n_nodes <- tree$Nnode %||% 0
+    show_labels <- isTRUE(input$show_node_labels)
+    
+    node_size <- if (n_tips > 200) 2 else if (n_tips > 100) 2.5 else 3
+    text_size <- if (n_tips > 200) 2.5 else if (n_tips > 100) 3 else 3.5
+    
+    p <- ggtree::ggtree(tree, layout = "rectangular", size = 0.5, color = "#1f1f1f") +
+      ggplot2::ggtitle("Phylogenetic Tree (Interactive)") +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text = ggplot2::element_blank(),
+        axis.ticks = ggplot2::element_blank(),
+        panel.grid = ggplot2::element_blank(),
+        plot.margin = ggplot2::margin(10, 10, 10, 10)
+      )
+    
+    if (show_labels && n_nodes > 0) {
+      internal_nodes <- (n_tips + 1):(n_tips + n_nodes)
+      
+      p <- p +
+        ggiraph::geom_point_interactive(
+          ggplot2::aes(
+            x = x, y = y,
+            tooltip = paste("Node ID:", node, "\nClick to see terminal taxa"),
+            data_id = node
+          ),
+          data = function(d) d[d$node %in% internal_nodes, ],
+          size = node_size,
+          color = "#a61c1c",
+          fill = "#a61c1c",
+          shape = 21,
+          stroke = 1.5,
+          hover_nearest = TRUE
+        ) +
+        ggiraph::geom_text_interactive(
+          ggplot2::aes(
+            x = x, y = y,
+            label = node,
+            tooltip = paste("Node ID:", node, "\nClick to see terminal taxa"),
+            data_id = node
+          ),
+          data = function(d) d[d$node %in% internal_nodes, ],
+          size = text_size * 0.7,
+          color = "white",
+          fontface = "bold",
+          hjust = 0.5,
+          vjust = 0.5
+        )
+    }
+    
+    ggiraph::girafe(
+      ggobj = p,
+      options = list(
+        ggiraph::opts_hover(css = "opacity:0.8; stroke-width:2px;"),
+        ggiraph::opts_selection(type = "single", css = "stroke-width:3px;"),
+        ggiraph::opts_zoom(min = 0.5, max = 5),
+        ggiraph::opts_toolbar(position = "topright"),
+        ggiraph::opts_sizing(rescale = TRUE, width = 1)
+      )
+    )
+  })
+  
+  # Handle node selection to show terminal taxa
+  observeEvent(input$tree_plot_selected, {
+    if (is.null(data_store$tree) || is.null(input$tree_plot_selected) || length(input$tree_plot_selected) == 0) return()
+    
+    tree <- data_store$tree
+    clicked_node <- as.numeric(input$tree_plot_selected[1])
+    
+    if (is.na(clicked_node)) return()
+    
+    tryCatch({
+      # Get descendants of the clicked node
+      descendants <- ape::extract.clade(tree, clicked_node)
+      terminal_taxa <- descendants$tip.label
+      
+      # Create output for modal
+      output$node_taxa_list <- renderPrint({
+        cat("Node ID:", clicked_node, "\n")
+        cat("Number of terminal taxa:", length(terminal_taxa), "\n\n")
+        cat("Terminal taxa:\n")
+        cat(paste("-", terminal_taxa, collapse = "\n"), "\n")
+      })
+      
+      # Show modal
+      shiny::showModal(shiny::modalDialog(
+        title = paste("Terminal Taxa in Node", clicked_node),
+        div(
+          verbatimTextOutput("node_taxa_list"),
+          style = "max-height: 500px; overflow-y: auto; font-size: 12px;"
+        ),
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close")
+      ))
+    }, error = function(e) {
+      shiny::showModal(shiny::modalDialog(
+        title = "Error",
+        paste("Could not extract clade:", e$message),
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close")
+      ))
+    })
+  })
+  
+  # Handle clade node selection to show terminal taxa
+  observeEvent(input$clade_tree_plot_selected, {
+    if (is.null(data_store$tree) || is.null(input$clade_node_id) || input$clade_node_id == "") return()
+    if (is.null(input$clade_tree_plot_selected) || length(input$clade_tree_plot_selected) == 0) return()
+    
+    tree <- data_store$tree
+    clade_root <- as.numeric(input$clade_node_id)
+    clicked_node_in_clade <- as.numeric(input$clade_tree_plot_selected[1])
+    
+    if (is.na(clicked_node_in_clade)) return()
+    
+    tryCatch({
+      # Extract the clade first
+      clade_tree <- ape::extract.clade(tree, clade_root)
+      clade_n_tips <- ape::Ntip(clade_tree)
+      
+      # Map the clicked node back to the original tree numbering
+      # The clade_tree has its own numbering, but we need to show the original tree node numbers
+      if (clicked_node_in_clade <= clade_n_tips) {
+        # It's a tip - show just that tip
+        terminal_taxa <- clade_tree$tip.label[clicked_node_in_clade]
+        node_label <- paste("Tip:", terminal_taxa)
+        original_node_id <- "(terminal taxon)"
+      } else {
+        # It's an internal node in the clade - get its descendants
+        descendants <- ape::extract.clade(clade_tree, clicked_node_in_clade)
+        terminal_taxa <- descendants$tip.label
+        # For internal nodes, we keep the clade's node ID since it's what the user sees
+        original_node_id <- clicked_node_in_clade
+        node_label <- paste("Node ID:", original_node_id)
+      }
+      
+      # Create output for modal
+      output$clade_node_taxa_list <- renderPrint({
+        cat(node_label, "\n")
+        cat("Number of terminal taxa:", length(terminal_taxa), "\n\n")
+        cat("Terminal taxa:\n")
+        cat(paste("-", terminal_taxa, collapse = "\n"), "\n")
+      })
+      
+      # Show modal
+      shiny::showModal(shiny::modalDialog(
+        title = paste("Terminal Taxa in Node", original_node_id),
+        div(
+          verbatimTextOutput("clade_node_taxa_list"),
+          style = "max-height: 500px; overflow-y: auto; font-size: 12px;"
+        ),
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close")
+      ))
+    }, error = function(e) {
+      shiny::showModal(shiny::modalDialog(
+        title = "Error",
+        paste("Could not extract clade:", e$message),
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close")
+      ))
+    })
+  })
+  
+  # Render clade tree when a clade node is selected (with reactive dependency on checkbox)
+  output$clade_tree_plot <- ggiraph::renderGirafe({
+    # Trigger reactivity when checkbox changes
+    input$show_clade_node_labels
+    
+    if (is.null(data_store$tree) || is.null(input$clade_node_id) || input$clade_node_id == "") {
+      p <- ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Select a node to preview", size = 5) +
+        ggplot2::theme_void()
+      return(ggiraph::girafe(ggobj = p, options = list(
+        ggiraph::opts_sizing(rescale = TRUE, width = 1)
+      )))
+    }
+    
+    tree <- data_store$tree
+    clade_node <- as.numeric(input$clade_node_id)
+    
+    tryCatch({
+      # Extract the clade
+      clade_tree <- ape::extract.clade(tree, clade_node)
+      
+      # Ensure the tree has tip labels
+      if (is.null(clade_tree$tip.label)) {
+        clade_tree$tip.label <- paste0("Tip_", 1:ape::Ntip(clade_tree))
+      }
+      
+      # Build ggtree plot for the clade with tip labels
+      clade_n_tips <- ape::Ntip(clade_tree)
+      clade_n_nodes <- clade_tree$Nnode %||% 0
+      show_clade_labels <- isTRUE(input$show_clade_node_labels)
+      
+      clade_node_size <- if (clade_n_tips > 200) 2 else if (clade_n_tips > 100) 2.5 else 3
+      clade_text_size <- if (clade_n_tips > 200) 2.5 else if (clade_n_tips > 100) 3 else 3.5
+      
+      p <- ggtree::ggtree(clade_tree, layout = "rectangular", size = 0.5, color = "#1f1f1f") +
+        ggtree::geom_tiplab(size = 1.8, hjust = -0.05, color = "#333333") +
+        ggplot2::ggtitle(paste("Clade rooted at Node", clade_node)) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"),
+          axis.text = ggplot2::element_blank(),
+          axis.ticks = ggplot2::element_blank(),
+          panel.grid = ggplot2::element_blank(),
+          plot.margin = ggplot2::margin(10, 80, 10, 10)
+        )
+      
+      # Add internal node labels if checkbox is checked
+      if (show_clade_labels && clade_n_nodes > 0) {
+        clade_internal_nodes <- (clade_n_tips + 1):(clade_n_tips + clade_n_nodes)
+        
+        # Create a mapping from clade node numbers to original tree node numbers
+        # This is done by matching tips and working backwards
+        clade_tip_names <- clade_tree$tip.label
+        original_tip_indices <- match(clade_tip_names, tree$tip.label)
+        
+        p <- p +
+          ggiraph::geom_point_interactive(
+            ggplot2::aes(
+              x = x, y = y,
+              tooltip = paste("Node ID:", node, "\nClick to see terminal taxa"),
+              data_id = node
+            ),
+            data = function(d) d[d$node %in% clade_internal_nodes, ],
+            size = clade_node_size,
+            color = "#a61c1c",
+            fill = "#a61c1c",
+            shape = 21,
+            stroke = 1.5,
+            hover_nearest = TRUE
+          ) +
+          ggiraph::geom_text_interactive(
+            ggplot2::aes(
+              x = x, y = y,
+              label = node,
+              tooltip = paste("Node ID:", node, "\nClick to see terminal taxa"),
+              data_id = node
+            ),
+            data = function(d) d[d$node %in% clade_internal_nodes, ],
+            size = clade_text_size * 0.7,
+            color = "white",
+            fontface = "bold",
+            hjust = 0.5,
+            vjust = 0.5
+          )
+      }
+      
+      # Extend x-axis to accommodate tip labels
+      tryCatch({
+        x_range <- ggplot2::ggplot_build(p)$layout$panel_scales_x[[1]]$range$range
+        p <- p + ggplot2::xlim(x_range[1], x_range[2] * 1.5)
+      }, error = function(e) {
+        # If xlim fails, just continue without it
+        NULL
+      })
+      
+      # Create interactive girafe
+      ggiraph::girafe(
+        ggobj = p,
+        options = list(
+          ggiraph::opts_hover(css = "opacity:0.8;"),
+          ggiraph::opts_selection(type = "single", css = "stroke-width:3px;"),
+          ggiraph::opts_zoom(min = 0.5, max = 5),
+          ggiraph::opts_toolbar(position = "topright"),
+          ggiraph::opts_sizing(rescale = TRUE, width = 1)
+        )
+      )
+    }, error = function(e) {
+      p <- ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Error extracting clade", size = 5, color = "red") +
+        ggplot2::theme_void()
+      ggiraph::girafe(ggobj = p, options = list(
+        ggiraph::opts_sizing(rescale = TRUE, width = 1)
+      ))
+    })
   })
   
   # ===== DATA PREPROCESSING TAB =====
