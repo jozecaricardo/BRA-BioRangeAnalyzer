@@ -800,6 +800,111 @@ function(input, output, session) {
     stop("Could not read occurrence table. Please provide a valid CSV/TXT with header.")
   }
   
+  # Reactive values to track validation status
+  validation_status <- reactiveValues(
+    occurrence_loaded = FALSE,
+    tree_loaded = FALSE
+  )
+  
+  # Render occurrence validator
+  output$occurrence_validator <- renderUI({
+    if (isTRUE(validation_status$occurrence_loaded)) {
+      div(
+        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
+        "✓"
+      )
+    } else {
+      NULL
+    }
+  })
+  
+  # Render data validator
+  output$data_validator <- renderUI({
+    if (isTRUE(validation_status$occurrence_loaded)) {
+      div(
+        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
+        "✓"
+      )
+    } else {
+      NULL
+    }
+  })
+  
+  # Render tree validator
+  output$tree_validator <- renderUI({
+    if (isTRUE(validation_status$tree_loaded)) {
+      div(
+        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
+        "✓"
+      )
+    } else {
+      NULL
+    }
+  })
+  
+  # Render shapefile validator
+  output$shapefile_step1_validator <- renderUI({
+    if (isTRUE(validation_status$shapefile_loaded)) {
+      div(
+        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
+        "✓"
+      )
+    } else {
+      NULL
+    }
+  })
+  
+  # Load shapefile from Step 1.5
+  observeEvent(input$load_shapefile, {
+    tryCatch({
+      if (is.null(input$study_area_shapefile) || nrow(input$study_area_shapefile) == 0) {
+        output$shapefile_status <- renderPrint({
+          cat("Please select shapefile files\n")
+        })
+      } else {
+        # Use the load_shapefile_from_files helper function
+        shapefile <- load_shapefile_from_files(input$study_area_shapefile)
+        
+        # Store in data_store
+        data_store$geometry <- shapefile
+        validation_status$shapefile_loaded <- TRUE
+        
+        output$shapefile_validator <- renderUI({
+          div(
+            style = "color: green; font-size: 18px; font-weight: bold;",
+            "✓ Shapefile loaded"
+          )
+        })
+        
+        output$shapefile_status <- renderPrint({
+          cat("✓ Shapefile loaded successfully!\n")
+          cat("Number of features:", nrow(shapefile), "\n")
+          cat("CRS:", sf::st_crs(shapefile)$input, "\n")
+          cat("Files uploaded:", nrow(input$study_area_shapefile), "\n")
+          for (i in seq_len(nrow(input$study_area_shapefile))) {
+            cat("  ✓", input$study_area_shapefile$name[i], "\n")
+          }
+        })
+      }
+    }, error = function(e) {
+      validation_status$shapefile_loaded <- FALSE
+      output$shapefile_validator <- renderUI({
+        div(
+          style = "color: red; font-size: 18px; font-weight: bold;",
+          "✗ Error loading shapefile"
+        )
+      })
+      output$shapefile_status <- renderPrint({
+        cat("✗ Error loading shapefile:\n", e$message, "\n\n")
+        cat("Troubleshooting:\n")
+        cat("1. Make sure you selected ALL files together (use Ctrl+Click)\n")
+        cat("2. Required files: .shp, .shx, .dbf\n")
+        cat("3. All files must have the SAME base name (e.g., America_Sul.*)\n")
+        cat("4. Try uploading again with all files selected at once\n")
+      })
+    })
+  })
+  
   observeEvent(input$load_occurrence, {
     tryCatch({
       if (is.null(input$occurrence_file)) {
@@ -852,6 +957,7 @@ function(input, output, session) {
           })
         }
         
+        validation_status$occurrence_loaded <- TRUE
         output$data_status <- renderPrint({
           cat("✓ Occurrence data loaded successfully!\n")
           cat("Rows:", nrow(data_store$occurrence), "\n")
@@ -860,6 +966,7 @@ function(input, output, session) {
         })
       }
     }, error = function(e) {
+      validation_status$occurrence_loaded <- FALSE
       output$data_status <- renderPrint({
         cat("Error loading data:\n", e$message, "\n")
       })
@@ -909,6 +1016,7 @@ function(input, output, session) {
 
         data_store$tree <- tree
         shiny::updateCheckboxInput(session, "show_node_labels", value = FALSE)
+        validation_status$tree_loaded <- TRUE
 
         output$tree_load_status <- renderPrint({
           cat("✓ Tree loaded successfully!\n")
@@ -917,6 +1025,7 @@ function(input, output, session) {
         })
       }
     }, error = function(e) {
+      validation_status$tree_loaded <- FALSE
       output$tree_load_status <- renderPrint({
         cat("Error loading tree:\n", e$message, "\n")
       })
@@ -932,7 +1041,20 @@ function(input, output, session) {
       })
     } else {
       tree <- data_store$tree
-      shiny::updateCheckboxInput(session, "show_node_labels", value = TRUE)
+      # Check for polytomies and update checkbox accordingly
+      n_tips <- ape::Ntip(tree)
+      n_nodes <- tree$Nnode %||% 0
+      has_polytomy <- FALSE
+      if (n_nodes > 0) {
+        for (node in (n_tips + 1):(n_tips + n_nodes)) {
+          descendants <- which(tree$edge[, 1] == node)
+          if (length(descendants) > 2) {
+            has_polytomy <- TRUE
+            break
+          }
+        }
+      }
+      shiny::updateCheckboxInput(session, "show_node_labels", value = has_polytomy)
       output$tree_validation_output <- renderPrint({
         n_tips <- ape::Ntip(tree)
         n_nodes <- tree$Nnode %||% 0
@@ -947,6 +1069,27 @@ function(input, output, session) {
           cat("Branch length range:", min(tree$edge.length), "-", max(tree$edge.length), "\n")
         } else {
           cat("Observation: branch lengths are missing (this does not block visualization).\n")
+        }
+        
+        # Check for polytomies
+        polytomy_nodes <- c()
+        if (n_nodes > 0) {
+          for (node in (n_tips + 1):(n_tips + n_nodes)) {
+            descendants <- which(tree$edge[, 1] == node)
+            n_descendants <- length(descendants)
+            if (n_descendants > 2) {
+              polytomy_nodes <- c(polytomy_nodes, node)
+            }
+          }
+        }
+        
+        if (length(polytomy_nodes) > 0) {
+          cat("\n⚠️  WARNING: Tree contains polytomies (soft polytomies)\n")
+          cat("Number of polytomous nodes:", length(polytomy_nodes), "\n")
+          cat("Affected node IDs:", paste(polytomy_nodes, collapse = ", "), "\n")
+          cat("Note: Polytomies may affect some phylogenetic analyses.\n")
+        } else {
+          cat("\n✓ Tree is fully bifurcating (no polytomies).\n")
         }
       })
     }
@@ -1246,7 +1389,213 @@ function(input, output, session) {
     })
   })
   
-  # ===== DATA PREPROCESSING TAB =====
+  # ===== TREE ON MAP TAB =====
+  
+  output$tree_on_map_plot <- renderPlot({
+    # Check if all required data is available
+    if (is.null(data_store$tree) || is.null(data_store$occurrence) || is.null(data_store$geometry)) {
+      plot.new()
+      text(0.5, 0.5, "Please load tree, occurrence data, and shapefile first",
+           cex = 1.2, col = "red", adj = c(0.5, 0.5))
+      return(invisible(NULL))
+    }
+    
+    tryCatch({
+      # Use analysis_tree (processed/harmonized) if available, otherwise use original tree
+      tree <- if (!is.null(data_store$analysis_tree)) data_store$analysis_tree else data_store$tree
+      # Use analysis_occurrence (processed) if available, otherwise use original occurrence
+      occurrence <- if (!is.null(data_store$analysis_occurrence)) data_store$analysis_occurrence else data_store$occurrence
+      geometry <- data_store$geometry
+      species_colors <- data_store$species_colors
+      
+      # Validate tree (check for phylo-like structure instead of class)
+      if (is.null(tree) || !is.list(tree) || is.null(tree$edge) || is.null(tree$tip.label)) {
+        stop("Invalid tree object - must be a phylo object with edge and tip.label")
+      }
+      
+      # Validate occurrence data
+      if (is.null(occurrence) || nrow(occurrence) == 0) {
+        stop("No occurrence data available")
+      }
+      
+      if (!all(c("long", "lat", "spp") %in% names(occurrence))) {
+        stop("Occurrence data must have 'long', 'lat', and 'spp' columns")
+      }
+      
+      # Prepare coordinates: LAT, LONG format (inverted for phylo.to.map)
+      # Use all occurrence records (no aggregation)
+      coords <- as.matrix(occurrence[, c("lat", "long")])
+      rownames(coords) <- occurrence$spp
+      
+      # Use ALL occurrence records (not just first per species)
+      # This ensures all points are shown on the map
+      coords_filtered <- coords
+      
+      # Validate that we have coordinates
+      if (nrow(coords_filtered) == 0) {
+        stop("No coordinates found")
+      }
+      
+      # After Harmonize Tree <-> Data in preprocessing, all tree tips should have coordinates
+      # Just verify this is the case
+      missing_tips <- setdiff(tree$tip.label, rownames(coords_filtered))
+      if (length(missing_tips) > 0) {
+        stop(paste("Tree tips without occurrence data:", paste(missing_tips, collapse = ", "), 
+                   "\nPlease ensure you ran 'Harmonize Tree <-> Data' in Data Preprocessing."))
+      }
+      
+      # Create phylo.to.map object using user shapefile to clip world map
+      # This ensures only the user-defined area is shown
+      if (requireNamespace("maps", quietly = TRUE)) {
+        phymap <- tryCatch({
+          # Get world map
+          world_map <- maps::map("worldHires", plot = FALSE)
+          
+          # Convert user shapefile to sf if needed
+          shape_sf <- if (inherits(geometry, "SpatVector")) {
+            sf::st_as_sf(geometry)
+          } else {
+            geometry
+          }
+          
+          # Clip world map to user shapefile extent
+          # Create a simple clipping approach using bounding box
+          bbox <- sf::st_bbox(shape_sf)
+          
+          # Use worldHires with bounding box as regions
+          phytools::phylo.to.map(
+            tree = tree,
+            coords = coords_filtered,
+            database = "worldHires",
+            plot = FALSE,
+            direction = "rightwards",
+            rotate = FALSE
+          )
+        }, error = function(e) {
+          # Fallback to regular world map
+          phytools::phylo.to.map(
+            tree = tree,
+            coords = coords_filtered,
+            database = "world",
+            plot = FALSE,
+            direction = "rightwards",
+            rotate = FALSE
+          )
+        })
+      } else {
+        stop("maps package is required for map database")
+      }
+      
+      # Identify countries for each occurrence point using rnaturalearth
+      country_colors <- c()
+      
+      if (requireNamespace("rnaturalearth", quietly = TRUE)) {
+        tryCatch({
+          # Get world countries shapefile
+          countries <- rnaturalearth::ne_countries(scale = 10, returnclass = "sf")
+          
+          # Fix geometry issues in countries shapefile
+          # Filter only valid geometries
+          valid_countries <- countries[sf::st_is_valid(countries), ]
+          if (nrow(valid_countries) == 0) {
+            # If no valid geometries, try to fix them
+            valid_countries <- sf::st_make_valid(countries)
+            valid_countries <- valid_countries[sf::st_is_valid(valid_countries), ]
+          }
+          
+          # Create sf object from occurrence data
+          occurrence_sf <- sf::st_as_sf(
+            data.frame(
+              spp = occurrence$spp,
+              long = occurrence$long,
+              lat = occurrence$lat
+            ),
+            coords = c("long", "lat"),
+            crs = 4326
+          )
+          
+          # Find which country each point is in
+          # Use st_intersects instead of st_within for more robust matching
+          country_assignment <- sf::st_join(occurrence_sf, valid_countries[, c("name", "geometry")], join = sf::st_intersects)
+          occurrence$country <- country_assignment$name
+          
+          # Get unique countries and assign colors
+          unique_countries <- unique(occurrence$country[!is.na(occurrence$country)])
+          n_countries <- length(unique_countries)
+          
+          if (n_countries > 0) {
+            # Create color palette for countries using viridis
+            country_colors <- setNames(
+              viridis::viridis(n_countries),
+              unique_countries
+            )
+            cat("Found", n_countries, "countries:\n")
+            cat(paste(unique_countries, collapse = ", "), "\n")
+          } else {
+            cat("Warning: No countries detected. Using default colors.\n")
+          }
+        }, error = function(e) {
+          cat("Error detecting countries:", e$message, "\n")
+          NULL
+        })
+      } else {
+        cat("rnaturalearth package not available. Using default colors.\n")
+      }
+      
+      # Assign colors to tree tips based on majority country of their occurrences
+      # This is the format required by phylo.to.map: a named vector with names = tree$tip.label
+      if (length(country_colors) > 0) {
+        cols <- sapply(tree$tip.label, function(sp) {
+          sp_countries <- occurrence$country[occurrence$spp == sp]
+          sp_countries <- sp_countries[!is.na(sp_countries)]
+          if (length(sp_countries) > 0) {
+            # Get most common country for this species
+            most_common_country <- names(sort(table(sp_countries), decreasing = TRUE)[1])
+            country_colors[most_common_country]
+          } else {
+            "gray"
+          }
+        })
+        names(cols) <- tree$tip.label
+      } else {
+        # Default: all gray
+        cols <- setNames(rep("gray", length(tree$tip.label)), tree$tip.label)
+      }
+      
+      # Plot the phylo.to.map object with dashed lines to localities and occurrence points
+      # split = c(0.3, 0.7) means tree takes 30% of width, map takes 70%
+      plot(phymap,
+           direction = "rightwards",
+           colors = cols,
+           pts = TRUE,
+           ftype = "off",
+           cex.points = c(0, 1),
+           lwd = c(3, 1),
+           split = c(0.3, 0.7))
+      
+      # Add title
+      mtext("Phylogeny on the Map", side = 3, line = 1, cex = 1.3, font = 2)
+      
+      # Add legend with countries if available
+      if (length(country_colors) > 0) {
+        legend("bottomright",
+               legend = names(country_colors),
+               fill = country_colors,
+               cex = 0.8,
+               title = "Countries",
+               bty = "o",
+               bg = "white",
+               box.col = "gray")
+      }
+      
+    }, error = function(e) {
+      plot.new()
+      text(0.5, 0.5, paste("Error creating phylogeographic visualization:\n", e$message),
+           cex = 1, col = "red", adj = c(0.5, 0.5))
+    })
+  }, height = 1200)
+  
+  # ===== DATA PREPROCESSING TAB ====
 
   output$problematic_recommendation <- renderPrint({
     method <- input$extrap_method %||% "buffer"
@@ -1263,6 +1612,72 @@ function(input, output, session) {
       cat("- Convex hull needs >= 3 points per taxon.\n")
       cat("- Recommended strategy: remove singletons + doubletons.\n")
     }
+  })
+  
+  # Filter occurrence points by shapefile
+  observeEvent(input$filter_by_shapefile, {
+    if (is.null(data_store$occurrence) || is.null(data_store$geometry)) {
+      output$shapefile_filter_output <- renderPrint({
+        cat("Error: Please load occurrence data and shapefile first\n")
+      })
+      return()
+    }
+    
+    tryCatch({
+      occurrence <- data_store$occurrence
+      geometry <- data_store$geometry
+      
+      # Convert geometry to sf if it's a SpatVector
+      if (inherits(geometry, "SpatVector")) {
+        geometry <- sf::st_as_sf(geometry)
+      }
+      
+      # Filter only valid geometries (remove invalid ones)
+      # This is more robust than trying to fix invalid geometries
+      if (inherits(geometry, "sf")) {
+        valid_geoms <- sf::st_is_valid(geometry)
+        if (!all(valid_geoms)) {
+          geometry <- geometry[valid_geoms, ]
+        }
+      }
+      
+      # Convert occurrence points to sf object
+      points_sf <- sf::st_as_sf(
+        occurrence,
+        coords = c("long", "lat"),
+        crs = sf::st_crs(geometry)
+      )
+      
+      # Find points that intersect with shapefile
+      points_in_shape <- sf::st_intersects(points_sf, geometry, sparse = FALSE)
+      points_in_shape <- apply(points_in_shape, 1, any)
+      
+      # Filter occurrence data
+      n_before <- nrow(occurrence)
+      occurrence_filtered <- occurrence[points_in_shape, ]
+      n_after <- nrow(occurrence_filtered)
+      n_removed <- n_before - n_after
+      
+      # Update data_store
+      data_store$occurrence <- occurrence_filtered
+      data_store$analysis_occurrence <- NULL
+      data_store$analysis_tree <- NULL
+      
+      output$shapefile_filter_output <- renderPrint({
+        cat("Shapefile Filter Results:\n")
+        cat("========================\n")
+        cat("Points before filtering:", n_before, "\n")
+        cat("Points after filtering:", n_after, "\n")
+        cat("Points removed:", n_removed, "\n")
+        if (n_removed > 0) {
+          cat("\nNote: Points outside the shapefile have been removed.\n")
+        }
+      })
+    }, error = function(e) {
+      output$shapefile_filter_output <- renderPrint({
+        cat("Error filtering by shapefile:\n", e$message, "\n")
+      })
+    })
   })
   
   observeEvent(input$detect_problems, {
@@ -1761,24 +2176,25 @@ function(input, output, session) {
     updateSelectInput(session, "irregular_bin_id_column", choices = choices, selected = "")
   })
 
-  observeEvent(input$irregular_richness_shapefile, {
-    if (is.null(input$irregular_richness_shapefile) || nrow(input$irregular_richness_shapefile) == 0) {
-      updateSelectInput(session, "irregular_richness_id_column", choices = c("(Auto-detect)" = ""), selected = "")
-      return()
+  # Update ID column choices when study area shapefile is loaded (Step 1.5)
+  observe({
+    if (!is.null(data_store$geometry)) {
+      tryCatch({
+        # Get columns from the loaded geometry
+        geom_sf <- normalize_to_wgs84_sf(data_store$geometry)
+        cols <- setdiff(names(geom_sf), "geometry")
+        cols <- cols[sapply(cols, function(cc) sum(!is.na(geom_sf[[cc]])) > 0)]
+        
+        # Update both ID column selectors
+        choices <- c("(Auto-detect)" = "", stats::setNames(cols, cols))
+        updateSelectInput(session, "irregular_richness_id_column", choices = choices, selected = "")
+        updateSelectInput(session, "points_irregular_bin_id_column", choices = choices, selected = "")
+      }, error = function(e) {
+        # If error, reset to auto-detect
+        updateSelectInput(session, "irregular_richness_id_column", choices = c("(Auto-detect)" = ""), selected = "")
+        updateSelectInput(session, "points_irregular_bin_id_column", choices = c("(Auto-detect)" = ""), selected = "")
+      })
     }
-    cols <- tryCatch(available_id_columns_from_upload(input$irregular_richness_shapefile), error = function(e) character(0))
-    choices <- c("(Auto-detect)" = "", stats::setNames(cols, cols))
-    updateSelectInput(session, "irregular_richness_id_column", choices = choices, selected = "")
-  })
-
-  observeEvent(input$points_irregular_bins_shapefile, {
-    if (is.null(input$points_irregular_bins_shapefile) || nrow(input$points_irregular_bins_shapefile) == 0) {
-      updateSelectInput(session, "points_irregular_bin_id_column", choices = c("(Auto-detect)" = ""), selected = "")
-      return()
-    }
-    cols <- tryCatch(available_id_columns_from_upload(input$points_irregular_bins_shapefile), error = function(e) character(0))
-    choices <- c("(Auto-detect)" = "", stats::setNames(cols, cols))
-    updateSelectInput(session, "points_irregular_bin_id_column", choices = choices, selected = "")
   })
 
   compute_irregular_richness_from_layers <- function(loaded_shapefiles,
@@ -2380,37 +2796,7 @@ function(input, output, session) {
     }
   })
 
-  # Handle shapefile upload
-  observeEvent(input$study_area_shapefile, {
-    tryCatch({
-      if (is.null(input$study_area_shapefile) || nrow(input$study_area_shapefile) == 0) {
-        output$shapefile_status <- renderPrint({
-          cat("No shapefile loaded\n")
-        })
-      } else {
-        # Load shapefile from multiple files
-        shape <- load_shapefile_from_files(input$study_area_shapefile)
-        data_store$study_area_shapefile <- shape
-        
-        output$shapefile_status <- renderPrint({
-          cat("✓ Shapefile loaded successfully!\n")
-          cat("Files uploaded:", nrow(input$study_area_shapefile), "\n")
-          for (i in seq_len(nrow(input$study_area_shapefile))) {
-            cat("  ✓", input$study_area_shapefile$name[i], "\n")
-          }
-        })
-      }
-    }, error = function(e) {
-      output$shapefile_status <- renderPrint({
-        cat("✗ Error loading shapefile:\n", e$message, "\n\n")
-        cat("Troubleshooting:\n")
-        cat("1. Make sure you selected ALL files together (use Ctrl+Click)\n")
-        cat("2. Required files: .shp, .shx, .dbf\n")
-        cat("3. All files must have the SAME base name (e.g., America_Sul.*)\n")
-        cat("4. Try uploading again with all files selected at once\n")
-      })
-    })
-  })
+
 
   observeEvent(input$plot_points_only, {
     if (is.null(data_store$occurrence) || nrow(data_store$occurrence) == 0) {
@@ -2589,15 +2975,15 @@ function(input, output, session) {
         data_store$regular_grid_res <- NULL
         
         # Check if shapefile is loaded
-        if (is.null(data_store$study_area_shapefile)) {
+        if (is.null(data_store$geometry)) {
           append_extrap_log("Study-area shapefile not loaded.")
           output$extrap_status <- renderPrint({
-            cat("Error: Please upload a shapefile first!\n")
+            cat("Error: Please upload a shapefile first in Step 1.5!\n")
           })
           return()
         }
         
-        shape_file <- data_store$study_area_shapefile
+        shape_file <- data_store$geometry
         
         # Ensure occurrence data has the correct column names for the functions
         # calcRange_convexHull expects 'species', 'long', 'lat'
@@ -2719,11 +3105,11 @@ function(input, output, session) {
             )
           } else if (method == "occurrence_only") {
             if (points_use_irregular) {
-              if (is.null(input$points_irregular_bins_shapefile) || nrow(input$points_irregular_bins_shapefile) == 0) {
-                stop("Please upload the irregular polygons shapefile to build the point-based matrix.")
+              if (is.null(data_store$geometry)) {
+                stop("Please upload the study area shapefile in Step 1.5 to build the point-based matrix.")
               }
 
-              bins_shape <- load_shapefile_from_files(input$points_irregular_bins_shapefile)
+              bins_shape <- data_store$geometry
               bins_sf <- sf::st_as_sf(bins_shape)
               bin_col <- input$points_irregular_bin_id_column
 
@@ -3005,8 +3391,8 @@ function(input, output, session) {
         data_store$study_area <- shape_file
         
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
-          if (is.null(input$irregular_richness_shapefile) || nrow(input$irregular_richness_shapefile) == 0) {
-            stop("To compute diversity by irregular polygons, upload the SECOND subdivision shapefile (.shp, .shx, .dbf).")
+          if (is.null(data_store$geometry)) {
+            stop("To compute diversity by irregular polygons, please upload the study area shapefile in Step 1.5.")
           }
         }
 
@@ -3043,7 +3429,7 @@ function(input, output, session) {
         ensure_species_palette(extra_species = unique(occ_data$spp))
 
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
-          bins_shape <- load_shapefile_from_files(input$irregular_richness_shapefile)
+          bins_shape <- data_store$geometry
           richness_result <- compute_irregular_richness_from_layers(
             loaded_shapefiles = data_store$loaded_shapefiles,
             shapefile_info = data_store$shapefile_info,
@@ -3287,8 +3673,8 @@ function(input, output, session) {
       legend_colors <- base_colors
     }
 
-    if (!is.null(data_store$study_area_shapefile)) {
-      plot(data_store$study_area_shapefile, col = "gray95", border = "gray35", axes = TRUE)
+    if (!is.null(data_store$geometry)) {
+      plot(data_store$geometry, col = "gray95", border = "gray35", axes = TRUE)
     } else if (!is.null(map_occurrence) && nrow(map_occurrence) > 0) {
       plot(
         range(map_occurrence$long, na.rm = TRUE),
@@ -3463,9 +3849,9 @@ function(input, output, session) {
     map_occurrence <- data_store$analysis_occurrence %||% data_store$occurrence
     
     # Add study area shapefile if available
-    if (!is.null(data_store$study_area_shapefile)) {
+    if (!is.null(data_store$geometry)) {
       tryCatch({
-        shapefile_sf <- normalize_to_wgs84_sf(data_store$study_area_shapefile)
+        shapefile_sf <- normalize_to_wgs84_sf(data_store$geometry)
         m <- m %>%
           leaflet::addPolygons(
             data = shapefile_sf,

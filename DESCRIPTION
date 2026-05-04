@@ -13,9 +13,9 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports: shiny, shinydashboard, shinyjs, shinyWidgets, shinythemes,
         leaflet, DT, ape, phangorn, TreeSearch, dplyr, tidyr, ggplot2, plotly, RColorBrewer,
-        BioGeoBEARS, raster, terra, sp, sf, geosphere, ggtree, ggiraph
+        BioGeoBEARS, raster, terra, sp, sf, geosphere, ggtree, ggiraph, phytools
 Suggests: GenSA, FD, snow, parallel, rexpokit, cladoRcpp,
-        phytools, markdown, knitr,
+        markdown, knitr,
         testthat (>= 3.0.0)
 Depends: R (>= 4.0.0)
 NeedsCompilation: no

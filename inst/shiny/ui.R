@@ -127,7 +127,9 @@ shinyUI(
             pre("spp,long,lat\nSpecies1,-50.5,-25.3\nSpecies1,-51.2,-26.1\nSpecies2,-48.3,-24.5"),
             fileInput("occurrence_file", "Choose CSV/TXT file:", accept = c("text/csv", "text/plain", ".csv", ".txt")),
             actionButton("load_occurrence", "Load Data", class = "btn btn-primary"),
-            br(), br(),
+            br(),
+            uiOutput("data_validator"),
+            br(),
             verbatimTextOutput("data_status")
           ),
           div(
@@ -136,14 +138,64 @@ shinyUI(
             p("Newick or Nexus format file"),
             fileInput("tree_file", "Choose tree file:", accept = c(".nwk", ".newick", ".nex", ".nexus", ".txt", ".tre")),
             actionButton("load_tree", "Load Tree", class = "btn btn-primary"),
-            br(), br(),
+            br(),
+            uiOutput("tree_validator"),
+            br(),
             verbatimTextOutput("tree_load_status")
           )
         )
       )
     ),
     
-    # Tab 3: Tree Validation
+    # Tab 1.5: Shapefile Input
+    tabPanel(
+      "Shapefile Input",
+      icon = icon("map"),
+      div(
+        class = "container-fluid",
+        style = "padding: 20px;",
+        div(
+          class = "step-title",
+          "Step 1.5: Shapefile Input"
+        ),
+        div(
+          class = "guidance-text",
+          p("Upload your study area shapefile for geographic analysis, phylogeographic visualization, and range extrapolation.")
+        ),
+        div(
+          class = "row",
+          div(
+            class = "col-md-12",
+            h4("Study Area Shapefile (Required)"),
+            div(
+              class = "guidance-text",
+              p(strong("Shapefile 1 (required): study-area boundary")),
+              p("Use this shapefile to delimit where extrapolation runs and where regular grid cells are created."),
+              p("You can use a simple boundary polygon (e.g., Brazil outline only) to speed up analyses."),
+              br(),
+              p(strong("IMPORTANT: Select ALL shapefile files at once!")),
+              p("Your shapefile consists of multiple files. You MUST select all of them together:"),
+              tags$ul(
+                tags$li(".shp - Geometry (required)"),
+                tags$li(".shx - Shape index (required)"),
+                tags$li(".dbf - Attributes (required)"),
+                tags$li(".prj - Projection (optional but recommended)")
+              ),
+              p(strong("How to select multiple files: Hold Ctrl (or Cmd on Mac) and click each file, then click Open.")),
+              p("Example: Select America_Sul.shp, America_Sul.shx, America_Sul.dbf, America_Sul.prj all together.")
+            ),
+            fileInput("study_area_shapefile", "Choose ALL shapefile files:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
+            actionButton("load_shapefile", "Load Shapefile", class = "btn btn-primary"),
+            br(),
+            uiOutput("shapefile_validator"),
+            br(),
+            verbatimTextOutput("shapefile_status")
+          )
+        )
+      )
+    ),
+    
+    # Tab 2: Tree Validation
     tabPanel(
       "Tree Validation",
       icon = icon("sitemap"),
@@ -259,11 +311,11 @@ shinyUI(
           class = "row",
           div(
             class = "col-md-12",
-            h4("Remove Duplicates"),
-            p("After detection, remove identical occurrence records within taxa (same spp, longitude and latitude):"),
-            actionButton("remove_duplicates", "Remove Duplicates", class = "btn btn-warning"),
+            h4("Remove Points Outside Shapefile"),
+            p("Filter occurrence points to keep only those within the study area shapefile (loaded in Step 1.5):"),
+            actionButton("filter_by_shapefile", "Filter Points by Shapefile", class = "btn btn-primary"),
             br(), br(),
-            verbatimTextOutput("duplicates_output")
+            verbatimTextOutput("shapefile_filter_output")
           )
         ),
         br(),
@@ -272,10 +324,22 @@ shinyUI(
           div(
             class = "col-md-12",
             h4("Harmonize Tree and Data"),
-            p("Align taxa between occurrence data and tree without applying singleton/doubleton removal."),
-            actionButton("harmonize_tree_data", "Harmonize Tree <-> Data", class = "btn btn-default"),
+            p("After applying all filters above (Remove Problematic Taxa, Filter by Shapefile), align taxa between occurrence data and tree. This is the final synchronization step."),
+            actionButton("harmonize_tree_data", "Harmonize Tree <-> Data", class = "btn btn-success"),
             br(), br(),
             verbatimTextOutput("harmonization_output")
+          )
+        ),
+        br(),
+        div(
+          class = "row",
+          div(
+            class = "col-md-12",
+            h4("Remove Duplicates"),
+            p("After harmonization, remove identical occurrence records within taxa (same spp, longitude and latitude):"),
+            actionButton("remove_duplicates", "Remove Duplicates", class = "btn btn-warning"),
+            br(), br(),
+            verbatimTextOutput("duplicates_output")
           )
         ),
         br(),
@@ -297,6 +361,31 @@ shinyUI(
       )
     ),
     
+    # Tab 4.5: Tree on Map
+    tabPanel(
+      "Tree on Map",
+      icon = icon("sitemap"),
+      div(
+        class = "container-fluid",
+        style = "padding: 20px;",
+        div(
+          class = "step-title",
+          "Step 3.5: Tree on Map"
+        ),
+        div(
+          class = "guidance-text",
+          p("Visualize the phylogenetic tree overlaid on the geographic distribution of species occurrences.")
+        ),
+        div(
+          class = "row",
+          div(
+            class = "col-md-12",
+            plotOutput("tree_on_map_plot", height = "600px")
+          )
+        )
+      )
+    ),
+    
     # Tab 5: Range Extrapolation
     tabPanel(
       "Range Extrapolation",
@@ -312,32 +401,6 @@ shinyUI(
           class = "guidance-text",
           p("Choose how occurrence points will be converted into ranges/areas for matrix and map outputs."),
           p("Occurrence points mode has two workflows: (1) regular grid cells (requires grid resolution) or (2) direct counting in user irregular polygons (no regular grid).", style = "font-size: 12px; color: #666;")
-        ),
-        div(
-          class = "row",
-          div(
-            class = "col-md-12",
-            h4("Study Area (Shapefile)"),
-            div(
-              class = "guidance-text",
-              p(strong("Shapefile 1 (required): study-area boundary")),
-              p("Use this shapefile to delimit where extrapolation runs and where regular grid cells are created."),
-              p("You can use a simple boundary polygon (e.g., Brazil outline only) to speed up analyses."),
-              p(strong("IMPORTANT: Select ALL shapefile files at once!")),
-              p("Your shapefile consists of multiple files. You MUST select all of them together:"),
-              tags$ul(
-                tags$li(strong(".shp"), " - Geometry (required)"),
-                tags$li(strong(".shx"), " - Shape index (required)"),
-                tags$li(strong(".dbf"), " - Attributes (required)"),
-                tags$li(strong(".prj"), " - Projection (optional but recommended)")
-              ),
-              p(strong("How to select multiple files:"), " Hold Ctrl (or Cmd on Mac) and click each file, then click Open."),
-              p("Example: Select America_Sul.shp, America_Sul.shx, America_Sul.dbf, America_Sul.prj all together.")
-            ),
-            fileInput("study_area_shapefile", "Choose ALL shapefile files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
-            verbatimTextOutput("shapefile_status"),
-            br()
-          )
         ),
         div(
           class = "row",
@@ -373,14 +436,7 @@ shinyUI(
                 ),
                 selected = "regular_grid"
               ),
-              conditionalPanel(
-                condition = "input.points_occurrence_mode == 'irregular_direct' || input.points_occurrence_mode == 'irregular_with_grid'",
-                p(strong("Shapefile 2 (optional): irregular polygons for counting/reporting units")),
-                p("Examples: states, ecoregions, municipalities. These polygons define output columns/areas for this workflow."),
-                fileInput("points_irregular_bins_shapefile", "Choose ALL irregular polygon files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
-                selectInput("points_irregular_bin_id_column", "Irregular polygon ID column:", choices = c("(Auto-detect)" = ""), selected = ""),
-                p("Available columns are populated automatically after upload.", style = "font-size: 12px; color: #666;")
-              ),
+
               conditionalPanel(
                 condition = "input.points_occurrence_mode == 'regular_grid'",
                 p("Regular grid workflow: occurrence points are assigned to grid cells based on the selected grid resolution.", style = "font-size: 12px; color: #666;")
@@ -400,13 +456,12 @@ shinyUI(
               condition = "input.extrap_method == 'buffer' || input.extrap_method == 'convex_hull' || input.extrap_method == 'mst'",
               tags$hr(),
               h5("Optional: Diversity in Irregular Polygons"),
-              p(strong("Shapefile 2 (optional): subdivisions for diversity and optional matrix aggregation outputs.")),
-              p("Workflow: choose Buffer/Convex Hull/MST + enable this option + upload a SECOND shapefile with subdivisions + choose ID column + click Run Extrapolation once.", style = "font-size: 12px; color: #666;"),
+              p(strong("Subdivisions for diversity and optional matrix aggregation outputs.")),
+              p("Workflow: choose Buffer/Convex Hull/MST + enable this option + choose ID column from the study area shapefile (Step 1.5) + click Run Extrapolation once.", style = "font-size: 12px; color: #666;"),
               checkboxInput("enable_irregular_richness", "Compute diversity by irregular polygons", value = FALSE),
               conditionalPanel(
                 condition = "input.enable_irregular_richness == true",
-                p("Upload all subdivision shapefile files (.shp, .shx, .dbf, .prj):"),
-                fileInput("irregular_richness_shapefile", "Choose ALL subdivision shapefile files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
+                p("Select subdivision ID column from the study area shapefile (loaded in Step 1.5):"),
                 selectInput("irregular_richness_id_column", "Subdivision ID column:", choices = c("(Auto-detect)" = ""), selected = ""),
                 p("When this option is enabled, the output matrix is aggregated to these subdivisions (recommended for BioGeoBEARS).", style = "font-size: 12px; color: #666;"),
                 p("If left empty, the app will auto-detect a suitable ID column.", style = "font-size: 12px; color: #666;")
@@ -659,7 +714,7 @@ shinyUI(
             tabPanel(
               "Irregular Polygon Diversity",
               br(),
-              p("How to use this panel: in Step 3, select Buffer/Convex Hull/MST, enable 'Compute diversity by irregular polygons', upload the SECOND subdivision shapefile, choose the subdivision ID column, then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, upload the SECOND shapefile, choose ID column, and run once."),
+              p("How to use this panel: in Step 3, select Buffer/Convex Hull/MST, enable 'Compute diversity by irregular polygons', choose the subdivision ID column from the study area shapefile (Step 1.5), then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, choose ID column, and run once."),
               leaflet::leafletOutput("irregular_bins_map", height = "500px"),
               br(),
               DT::dataTableOutput("irregular_bins_table")
