@@ -133,7 +133,7 @@ shinyUI(
         ),
         div(
           class = "guidance-text",
-          p("Upload your occurrence data (CSV/TXT), phylogenetic tree (Newick or Nexus format), and study area shapefile (optional).")
+          p("Upload your occurrence data (CSV/TXT) and study area shapefile (required). Phylogenetic tree is optional.")
         ),
         div(
           class = "row",
@@ -172,7 +172,7 @@ shinyUI(
           style = "margin-top: 30px;",
           div(
             class = "col-md-12",
-            h4("Study Area Shapefile (Optional)"),
+            h4("Study Area Shapefile (Required)"),
             div(
               class = "guidance-text",
               p(strong("Use this shapefile to:")),

@@ -1325,7 +1325,10 @@ function(input, output, session) {
       # Convert back to data frame
       if (nrow(points_inside) > 0) {
         occ_filtered <- as.data.frame(points_inside)
-        occ_filtered <- occ_filtered[, c("spp", "long", "lat")]
+        # Extract only the columns we need, handling the geometry column
+        cols_to_keep <- c("spp", "long", "lat")
+        cols_available <- intersect(cols_to_keep, names(occ_filtered))
+        occ_filtered <- occ_filtered[, cols_available, drop = FALSE]
         
         # Update data store
         data_store$occurrence <- occ_filtered
