@@ -975,6 +975,22 @@ function(input, output, session) {
         } else {
           cat("Observation: branch lengths are missing (this does not block visualization).\n")
         }
+        
+        # Check for polytomies
+        cat("\n")
+        is_binary <- ape::is.binary(tree)
+        if (is_binary) {
+          cat("✓ Tree is fully bifurcating (no polytomies)\n")
+        } else {
+          cat("⚠ Tree contains polytomies (nodes with >2 descendants)\n")
+          # Count polytomies
+          node_degrees <- table(tree$edge[, 1])
+          polytomy_nodes <- which(node_degrees > 2)
+          cat("Number of polytomous nodes:", length(polytomy_nodes), "\n")
+          if (length(polytomy_nodes) > 0 && length(polytomy_nodes) <= 10) {
+            cat("Polytomous node IDs:", paste(names(polytomy_nodes), collapse = ", "), "\n")
+          }
+        }
       })
     }
   })
@@ -1369,9 +1385,18 @@ function(input, output, session) {
         species_counts <- table(occ_data$spp)
         singletons <- names(species_counts[species_counts == 1])
         doubletons <- names(species_counts[species_counts == 2])
-        dup_idx <- duplicated(occ_data[, c("spp", "long", "lat"), drop = FALSE])
-        duplicate_taxa <- sort(unique(occ_data$spp[dup_idx]))
-        duplicate_n <- sum(dup_idx)
+        # Check for duplicates - handle column names safely
+        cols_to_check <- c("spp", "long", "lat")
+        cols_available <- intersect(cols_to_check, names(occ_data))
+        if (length(cols_available) > 0) {
+          dup_idx <- duplicated(occ_data[, cols_available, drop = FALSE])
+          duplicate_taxa <- sort(unique(occ_data$spp[dup_idx]))
+          duplicate_n <- sum(dup_idx)
+        } else {
+          dup_idx <- rep(FALSE, nrow(occ_data))
+          duplicate_taxa <- character(0)
+          duplicate_n <- 0
+        }
         
         output$problem_detection_output <- renderPrint({
           cat("=== Problematic Taxa Detection ===\n\n")

@@ -204,14 +204,14 @@ shinyUI(
     
     # Tab 3: Tree Validation
     tabPanel(
-      "Tree Validation",
+      "Scanning Tree",
       icon = icon("sitemap"),
       div(
         class = "container-fluid",
         style = "padding: 20px;",
         div(
           class = "step-title",
-          "Step 2: Tree Validation"
+          "Step 2: Scanning Tree"
         ),
         div(
           class = "guidance-text",
@@ -330,11 +330,11 @@ shinyUI(
           class = "row",
           div(
             class = "col-md-12",
-            h4("Remove Duplicates"),
-            p("After detection, remove identical occurrence records within taxa (same spp, longitude and latitude):"),
-            actionButton("remove_duplicates", "Remove Duplicates", class = "btn btn-warning"),
+            h4("Harmonize Tree and Data"),
+            p("Align taxa between occurrence data and tree without applying singleton/doubleton removal."),
+            actionButton("harmonize_tree_data", "Harmonize Tree <-> Data", class = "btn btn-default"),
             br(), br(),
-            verbatimTextOutput("duplicates_output")
+            verbatimTextOutput("harmonization_output")
           )
         ),
         br(),
@@ -342,11 +342,11 @@ shinyUI(
           class = "row",
           div(
             class = "col-md-12",
-            h4("Harmonize Tree and Data"),
-            p("Align taxa between occurrence data and tree without applying singleton/doubleton removal."),
-            actionButton("harmonize_tree_data", "Harmonize Tree <-> Data", class = "btn btn-default"),
+            h4("Remove Duplicates"),
+            p("Remove identical occurrence records within taxa (same spp, longitude and latitude):"),
+            actionButton("remove_duplicates", "Remove Duplicates", class = "btn btn-warning"),
             br(), br(),
-            verbatimTextOutput("harmonization_output")
+            verbatimTextOutput("duplicates_output")
           )
         ),
         br(),
