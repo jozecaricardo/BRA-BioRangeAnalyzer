@@ -1707,9 +1707,11 @@ function(input, output, session) {
         data_store$mst_pres_abs <- NULL
         data_store$mst_context <- NULL
         
-        # Verify harmonization with name.check
+        # Verify harmonization with setdiff
         final_check <- if (!is.null(tree_clean)) {
-          ape::name.check(tree_clean, occ_data_clean)
+          tree_not_data <- setdiff(tree_clean$tip.label, unique(occ_data_clean$spp))
+          data_not_tree <- setdiff(unique(occ_data_clean$spp), tree_clean$tip.label)
+          list(tree_not_data = tree_not_data, data_not_tree = data_not_tree)
         } else {
           "OK"
         }
@@ -1724,13 +1726,17 @@ function(input, output, session) {
           cat("\n")
           if (identical(final_check, "OK")) {
             cat("✓ Verification: Tree and data are perfectly synchronized!\n")
-          } else {
-            cat("⚠ Verification result:\n")
-            if (!is.null(final_check$tree_not_data) && length(final_check$tree_not_data) > 0) {
-              cat("  Tree taxa not in data:", paste(final_check$tree_not_data, collapse = ", "), "\n")
-            }
-            if (!is.null(final_check$data_not_tree) && length(final_check$data_not_tree) > 0) {
-              cat("  Data taxa not in tree:", paste(final_check$data_not_tree, collapse = ", "), "\n")
+          } else if (is.list(final_check)) {
+            if (length(final_check$tree_not_data) == 0 && length(final_check$data_not_tree) == 0) {
+              cat("✓ Verification: Tree and data are perfectly synchronized!\n")
+            } else {
+              cat("⚠ Verification result:\n")
+              if (length(final_check$tree_not_data) > 0) {
+                cat("  Tree taxa not in data:", paste(final_check$tree_not_data, collapse = ", "), "\n")
+              }
+              if (length(final_check$data_not_tree) > 0) {
+                cat("  Data taxa not in tree:", paste(final_check$data_not_tree, collapse = ", "), "\n")
+              }
             }
           }
         })
