@@ -155,7 +155,7 @@ shinyUI(
             fileInput("occurrence_file", "Choose CSV/TXT file:", accept = c("text/csv", "text/plain", ".csv", ".txt")),
             actionButton("load_occurrence", "Load Data", class = "btn btn-primary"),
             br(), br(),
-            verbatimTextOutput("data_status")
+            htmlOutput("data_status")
           ),
           div(
             class = "col-md-6",
@@ -164,7 +164,7 @@ shinyUI(
             fileInput("tree_file", "Choose tree file:", accept = c(".nwk", ".newick", ".nex", ".nexus", ".txt", ".tre")),
             actionButton("load_tree", "Load Tree", class = "btn btn-primary"),
             br(), br(),
-            verbatimTextOutput("tree_load_status")
+            htmlOutput("tree_load_status")
           )
         )
       )
@@ -362,7 +362,7 @@ shinyUI(
               p("Example: Select America_Sul.shp, America_Sul.shx, America_Sul.dbf, America_Sul.prj all together.")
             ),
             fileInput("study_area_shapefile", "Choose ALL shapefile files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
-            verbatimTextOutput("shapefile_status"),
+            htmlOutput("shapefile_status"),
             br()
           )
         ),

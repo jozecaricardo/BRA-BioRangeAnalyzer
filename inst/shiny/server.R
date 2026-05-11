@@ -852,16 +852,29 @@ function(input, output, session) {
           })
         }
         
-        output$data_status <- renderPrint({
-          cat("✓ Occurrence data loaded successfully!\n")
-          cat("Rows:", nrow(data_store$occurrence), "\n")
-          cat("Species:", length(unique(data_store$occurrence$spp)), "\n")
-          cat("Tree state: reset (reload tree if needed)\n")
+        output$data_status <- renderText({
+          paste0(
+            "<div style='display: flex; align-items: center; gap: 12px;'>",
+            "<div style='width: 40px; height: 40px; background-color: #28a745; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;'>✓</div>",
+            "<div>",
+            "<strong style='color: #28a745; font-size: 16px;'>Occurrence data loaded successfully!</strong><br/>",
+            "<small style='color: #666;'>Rows: ", nrow(data_store$occurrence), " | Species: ", length(unique(data_store$occurrence$spp)), "</small>",
+            "</div>",
+            "</div>"
+          )
         })
       }
     }, error = function(e) {
-      output$data_status <- renderPrint({
-        cat("✗ Error loading data:\n", e$message, "\n")
+      output$data_status <- renderText({
+        paste0(
+          "<div style='display: flex; align-items: center; gap: 12px;'>",
+          "<div style='width: 40px; height: 40px; background-color: #dc3545; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;'>✗</div>",
+          "<div>",
+          "<strong style='color: #dc3545; font-size: 16px;'>Error loading data:</strong><br/>",
+          "<small style='color: #666;'>", e$message, "</small>",
+          "</div>",
+          "</div>"
+        )
       })
     })
   })
@@ -910,15 +923,29 @@ function(input, output, session) {
         data_store$tree <- tree
         shiny::updateCheckboxInput(session, "show_node_labels", value = FALSE)
 
-        output$tree_load_status <- renderPrint({
-          cat("✓ Tree loaded successfully!\n")
-          cat("Number of tips:", length(tree$tip.label), "\n")
-          cat("Has branch lengths:", !is.null(tree$edge.length), "\n")
+        output$tree_load_status <- renderText({
+          paste0(
+            "<div style='display: flex; align-items: center; gap: 12px;'>",
+            "<div style='width: 40px; height: 40px; background-color: #28a745; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;'>✓</div>",
+            "<div>",
+            "<strong style='color: #28a745; font-size: 16px;'>Tree loaded successfully!</strong><br/>",
+            "<small style='color: #666;'>Tips: ", length(tree$tip.label), " | Branch lengths: ", !is.null(tree$edge.length), "</small>",
+            "</div>",
+            "</div>"
+          )
         })
       }
     }, error = function(e) {
-      output$tree_load_status <- renderPrint({
-        cat("✗ Error loading tree:\n", e$message, "\n")
+      output$tree_load_status <- renderText({
+        paste0(
+          "<div style='display: flex; align-items: center; gap: 12px;'>",
+          "<div style='width: 40px; height: 40px; background-color: #dc3545; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;'>✗</div>",
+          "<div>",
+          "<strong style='color: #dc3545; font-size: 16px;'>Error loading tree:</strong><br/>",
+          "<small style='color: #666;'>", e$message, "</small>",
+          "</div>",
+          "</div>"
+        )
       })
     })
   })
@@ -2392,22 +2419,39 @@ function(input, output, session) {
         shape <- load_shapefile_from_files(input$study_area_shapefile)
         data_store$study_area_shapefile <- shape
         
-        output$shapefile_status <- renderPrint({
-          cat("✓ Shapefile loaded successfully!\n")
-          cat("Files uploaded:", nrow(input$study_area_shapefile), "\n")
-          for (i in seq_len(nrow(input$study_area_shapefile))) {
-            cat("  ✓", input$study_area_shapefile$name[i], "\n")
-          }
+        output$shapefile_status <- renderText({
+          file_list <- paste(sapply(seq_len(nrow(input$study_area_shapefile)), function(i) {
+            paste0("<small>✓ ", input$study_area_shapefile$name[i], "</small>")
+          }), collapse = "<br/>")
+          
+          paste0(
+            "<div style='display: flex; align-items: flex-start; gap: 12px;'>",
+            "<div style='width: 40px; height: 40px; background-color: #28a745; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; flex-shrink: 0;'>✓</div>",
+            "<div>",
+            "<strong style='color: #28a745; font-size: 16px;'>Shapefile loaded successfully!</strong><br/>",
+            "<small style='color: #666;'>Files uploaded: ", nrow(input$study_area_shapefile), "</small><br/>",
+            file_list,
+            "</div>",
+            "</div>"
+          )
         })
       }
     }, error = function(e) {
-      output$shapefile_status <- renderPrint({
-        cat("✗ Error loading shapefile:\n", e$message, "\n\n")
-        cat("Troubleshooting:\n")
-        cat("1. Make sure you selected ALL files together (use Ctrl+Click)\n")
-        cat("2. Required files: .shp, .shx, .dbf\n")
-        cat("3. All files must have the SAME base name (e.g., America_Sul.*)\n")
-        cat("4. Try uploading again with all files selected at once\n")
+      output$shapefile_status <- renderText({
+        paste0(
+          "<div style='display: flex; align-items: flex-start; gap: 12px;'>",
+          "<div style='width: 40px; height: 40px; background-color: #dc3545; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; flex-shrink: 0;'>✗</div>",
+          "<div>",
+          "<strong style='color: #dc3545; font-size: 16px;'>Error loading shapefile:</strong><br/>",
+          "<small style='color: #666;'>", e$message, "</small><br/><br/>",
+          "<strong style='color: #666; font-size: 14px;'>Troubleshooting:</strong><br/>",
+          "<small style='color: #666;'>1. Make sure you selected ALL files together (use Ctrl+Click)<br/>",
+          "2. Required files: .shp, .shx, .dbf<br/>",
+          "3. All files must have the SAME base name (e.g., America_Sul.*)<br/>",
+          "4. Try uploading again with all files selected at once</small>",
+          "</div>",
+          "</div>"
+        )
       })
     })
   })
