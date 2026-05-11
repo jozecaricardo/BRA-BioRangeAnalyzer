@@ -2729,6 +2729,11 @@ function(input, output, session) {
           tree <- singleton_result$treeMod %||% singleton_result$treeNonMod %||% tree
           data_store$singleton_result <- singleton_result
 
+          # GUARANTEE: Ensure occ_data has spp, long, lat columns
+          if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
+            stop("[MST] singleton_to_data_frame returned data without required columns. Got: ", paste(names(occ_data), collapse = ", "))
+          }
+
           append_extrap_log("Applied MST singleton/tree harmonization.")
           append_extrap_log(paste0("Rows after MST harmonization: ", nrow(occ_data)))
           append_extrap_log(paste0("Taxa after MST harmonization: ", length(unique(occ_data$spp))))
@@ -2743,10 +2748,23 @@ function(input, output, session) {
               stop("No taxa with >= 3 points are available for convex hull extrapolation.")
             }
           }
+          # GUARANTEE: Ensure occ_data has spp, long, lat columns
+          if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
+            stop("[Convex Hull] occ_data missing required columns. Got: ", paste(names(occ_data), collapse = ", "))
+          }
           data_store$singleton_result <- NULL
         } else {
+          # GUARANTEE: Ensure occ_data has spp, long, lat columns
+          if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
+            stop("[Other method] occ_data missing required columns. Got: ", paste(names(occ_data), collapse = ", "))
+          }
           data_store$singleton_result <- NULL
         }
+        # FINAL GUARANTEE: occ_data must have spp, long, lat before continuing
+        if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
+          stop("[FINAL CHECK] occ_data is missing required columns before processing. Got: ", paste(names(occ_data), collapse = ", "))
+        }
+
         points_mode <- if (identical(method, "occurrence_only")) (input$points_occurrence_mode %||% "regular_grid") else "regular_grid"
         points_use_irregular <- identical(method, "occurrence_only") && points_mode %in% c("irregular_direct", "irregular_with_grid")
         points_use_grid_overlay <- identical(method, "occurrence_only") && identical(points_mode, "irregular_with_grid")
