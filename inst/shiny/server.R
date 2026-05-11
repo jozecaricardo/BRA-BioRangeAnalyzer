@@ -1292,6 +1292,69 @@ function(input, output, session) {
     }
   })
   
+  # Filter points outside shapefile
+  observeEvent(input$filter_points_by_shapefile, {
+    tryCatch({
+      if (is.null(data_store$occurrence)) {
+        output$shapefile_filter_output <- renderPrint({
+          cat("Error: Please load occurrence data first\n")
+        })
+        return(invisible(NULL))
+      }
+      
+      if (is.null(data_store$study_area_shapefile)) {
+        output$shapefile_filter_output <- renderPrint({
+          cat("Error: Please load a study area shapefile first\n")
+        })
+        return(invisible(NULL))
+      }
+      
+      # Convert occurrence data to spatial vector
+      occ_spatial <- terra::vect(
+        data_store$occurrence,
+        geom = c("long", "lat"),
+        crs = terra::crs(data_store$study_area_shapefile)
+      )
+      
+      # Count points before filtering
+      n_before <- nrow(data_store$occurrence)
+      
+      # Filter points inside shapefile
+      points_inside <- terra::intersect(occ_spatial, data_store$study_area_shapefile)
+      
+      # Convert back to data frame
+      if (nrow(points_inside) > 0) {
+        occ_filtered <- as.data.frame(points_inside)
+        occ_filtered <- occ_filtered[, c("spp", "long", "lat")]
+        
+        # Update data store
+        data_store$occurrence <- occ_filtered
+        n_after <- nrow(occ_filtered)
+        n_removed <- n_before - n_after
+        
+        output$shapefile_filter_output <- renderPrint({
+          cat("✓ Points filtered successfully!\n")
+          cat("Points before:", n_before, "\n")
+          cat("Points after:", n_after, "\n")
+          cat("Points removed:", n_removed, "\n\n")
+          cat("Species summary after filtering:\n")
+          species_counts <- table(occ_filtered$spp)
+          cat("Total species:", length(species_counts), "\n")
+          cat("Points per species (min-max):", min(species_counts), "-", max(species_counts), "\n")
+        })
+      } else {
+        output$shapefile_filter_output <- renderPrint({
+          cat("Error: No points found inside the shapefile!\n")
+          cat("Check if your shapefile and occurrence data use the same coordinate system.\n")
+        })
+      }
+    }, error = function(e) {
+      output$shapefile_filter_output <- renderPrint({
+        cat("Error filtering points:\n", e$message, "\n")
+      })
+    })
+  })
+  
   observeEvent(input$detect_problems, {
     if (is.null(data_store$occurrence)) {
       output$problem_detection_output <- renderPrint({

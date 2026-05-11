@@ -133,7 +133,7 @@ shinyUI(
         ),
         div(
           class = "guidance-text",
-          p("Upload your occurrence data (CSV/TXT) and phylogenetic tree (Newick or Nexus format).")
+          p("Upload your occurrence data (CSV/TXT), phylogenetic tree (Newick or Nexus format), and study area shapefile (optional).")
         ),
         div(
           class = "row",
@@ -165,6 +165,38 @@ shinyUI(
             actionButton("load_tree", "Load Tree", class = "btn btn-primary"),
             br(), br(),
             htmlOutput("tree_load_status")
+          )
+        ),
+        div(
+          class = "row",
+          style = "margin-top: 30px;",
+          div(
+            class = "col-md-12",
+            h4("Study Area Shapefile (Optional)"),
+            div(
+              class = "guidance-text",
+              p(strong("Use this shapefile to:")),
+              tags$ul(
+                tags$li("Delimit where extrapolation runs"),
+                tags$li("Filter occurrence points outside the study area"),
+                tags$li("Create regular grid cells within the boundary")
+              ),
+              p("You can use a simple boundary polygon (e.g., Brazil outline only) to speed up analyses."),
+              p(strong("IMPORTANT: Select ALL shapefile files at once!")),
+              p("Your shapefile consists of multiple files. You MUST select all of them together:"),
+              tags$ul(
+                tags$li(strong(".shp"), " - Geometry (required)"),
+                tags$li(strong(".shx"), " - Shape index (required)"),
+                tags$li(strong(".dbf"), " - Attributes (required)"),
+                tags$li(strong(".prj"), " - Projection (optional but recommended)")
+              ),
+              p("How to select multiple files: Hold Ctrl (or Cmd on Mac) and click each file, then click Open."),
+              p("Example: Select America_Sul.shp, America_Sul.shx, America_Sul.dbf, America_Sul.prj all together.")
+            ),
+            fileInput("study_area_shapefile", "Choose ALL shapefile files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
+            actionButton("load_shapefile", "Load Shapefile", class = "btn btn-primary"),
+            br(), br(),
+            htmlOutput("shapefile_status")
           )
         )
       )
@@ -242,6 +274,18 @@ shinyUI(
           class = "guidance-text",
           p("Remove problematic taxa (singletons and degenerate cases) before extrapolation.")
         ),
+        div(
+          class = "row",
+          div(
+            class = "col-md-12",
+            h4("Filter Points Outside Study Area"),
+            p("If you loaded a study area shapefile in Step 1, you can remove occurrence points that fall outside the shapefile boundary."),
+            actionButton("filter_points_by_shapefile", "Remove Points Outside Shapefile", class = "btn btn-success"),
+            br(), br(),
+            verbatimTextOutput("shapefile_filter_output")
+          )
+        ),
+        br(),
         div(
           class = "row",
           div(
