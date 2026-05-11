@@ -388,26 +388,10 @@ shinyUI(
           class = "row",
           div(
             class = "col-md-12",
-            h4("Study Area (Shapefile)"),
             div(
               class = "guidance-text",
-              p(strong("Shapefile 1 (required): study-area boundary")),
-              p("Use this shapefile to delimit where extrapolation runs and where regular grid cells are created."),
-              p("You can use a simple boundary polygon (e.g., Brazil outline only) to speed up analyses."),
-              p(strong("IMPORTANT: Select ALL shapefile files at once!")),
-              p("Your shapefile consists of multiple files. You MUST select all of them together:"),
-              tags$ul(
-                tags$li(strong(".shp"), " - Geometry (required)"),
-                tags$li(strong(".shx"), " - Shape index (required)"),
-                tags$li(strong(".dbf"), " - Attributes (required)"),
-                tags$li(strong(".prj"), " - Projection (optional but recommended)")
-              ),
-              p(strong("How to select multiple files:"), " Hold Ctrl (or Cmd on Mac) and click each file, then click Open."),
-              p("Example: Select America_Sul.shp, America_Sul.shx, America_Sul.dbf, America_Sul.prj all together.")
-            ),
-            fileInput("study_area_shapefile", "Choose ALL shapefile files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
-            htmlOutput("shapefile_status"),
-            br()
+              p(strong("Note:"), " The study area shapefile should be loaded in Step 1 (Data Input). It will be used automatically for this extrapolation.")
+            )
           )
         ),
         div(
