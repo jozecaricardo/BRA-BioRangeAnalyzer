@@ -57,6 +57,33 @@ shinyUI(
           font-weight: 600;
           color: #2c5aa0;
         }
+        .upload-status-success {
+          background-color: #d4edda;
+          border: 1px solid #c3e6cb;
+          color: #155724;
+          padding: 12px 15px;
+          border-radius: 4px;
+          margin-top: 10px;
+          font-weight: 500;
+        }
+        .upload-status-error {
+          background-color: #f8d7da;
+          border: 1px solid #f5c6cb;
+          color: #721c24;
+          padding: 12px 15px;
+          border-radius: 4px;
+          margin-top: 10px;
+          font-weight: 500;
+        }
+        .upload-status-info {
+          background-color: #d1ecf1;
+          border: 1px solid #bee5eb;
+          color: #0c5460;
+          padding: 12px 15px;
+          border-radius: 4px;
+          margin-top: 10px;
+          font-weight: 500;
+        }
       "))
     ),
     

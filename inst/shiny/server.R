@@ -852,16 +852,25 @@ function(input, output, session) {
           })
         }
         
-        output$data_status <- renderPrint({
-          cat("✓ Occurrence data loaded successfully!\n")
-          cat("Rows:", nrow(data_store$occurrence), "\n")
-          cat("Species:", length(unique(data_store$occurrence$spp)), "\n")
-          cat("Tree state: reset (reload tree if needed)\n")
+        output$data_status <- renderUI({
+          div(class = "upload-status-success",
+            tags$strong("✓ Occurrence data loaded successfully!"),
+            tags$br(),
+            tags$small(paste("Rows:", nrow(data_store$occurrence))),
+            tags$br(),
+            tags$small(paste("Species:", length(unique(data_store$occurrence$spp)))),
+            tags$br(),
+            tags$small("Tree state: reset (reload tree if needed)")
+          )
         })
       }
     }, error = function(e) {
-      output$data_status <- renderPrint({
-        cat("Error loading data:\n", e$message, "\n")
+      output$data_status <- renderUI({
+        div(class = "upload-status-error",
+          tags$strong("✗ Error loading data:"),
+          tags$br(),
+          tags$small(e$message)
+        )
       })
     })
   })
@@ -910,15 +919,23 @@ function(input, output, session) {
         data_store$tree <- tree
         shiny::updateCheckboxInput(session, "show_node_labels", value = FALSE)
 
-        output$tree_load_status <- renderPrint({
-          cat("✓ Tree loaded successfully!\n")
-          cat("Number of tips:", length(tree$tip.label), "\n")
-          cat("Has branch lengths:", !is.null(tree$edge.length), "\n")
+        output$tree_load_status <- renderUI({
+          div(class = "upload-status-success",
+            tags$strong("✓ Tree loaded successfully!"),
+            tags$br(),
+            tags$small(paste("Number of tips:", length(tree$tip.label))),
+            tags$br(),
+            tags$small(paste("Has branch lengths:", !is.null(tree$edge.length)))
+          )
         })
       }
     }, error = function(e) {
-      output$tree_load_status <- renderPrint({
-        cat("Error loading tree:\n", e$message, "\n")
+      output$tree_load_status <- renderUI({
+        div(class = "upload-status-error",
+          tags$strong("✗ Error loading tree:"),
+          tags$br(),
+          tags$small(e$message)
+        )
       })
     })
   })
@@ -2392,22 +2409,37 @@ function(input, output, session) {
         shape <- load_shapefile_from_files(input$study_area_shapefile)
         data_store$study_area_shapefile <- shape
         
-        output$shapefile_status <- renderPrint({
-          cat("✓ Shapefile loaded successfully!\n")
-          cat("Files uploaded:", nrow(input$study_area_shapefile), "\n")
-          for (i in seq_len(nrow(input$study_area_shapefile))) {
-            cat("  ✓", input$study_area_shapefile$name[i], "\n")
-          }
+        output$shapefile_status <- renderUI({
+          file_items <- lapply(seq_len(nrow(input$study_area_shapefile)), function(i) {
+            list(tags$small(paste("  ✓", input$study_area_shapefile$name[i])), tags$br())
+          })
+          
+          div(class = "upload-status-success",
+            tags$strong("✓ Shapefile loaded successfully!"),
+            tags$br(),
+            tags$small(paste("Files uploaded:", nrow(input$study_area_shapefile))),
+            tags$br(),
+            do.call(tagList, file_items)
+          )
         })
       }
     }, error = function(e) {
-      output$shapefile_status <- renderPrint({
-        cat("✗ Error loading shapefile:\n", e$message, "\n\n")
-        cat("Troubleshooting:\n")
-        cat("1. Make sure you selected ALL files together (use Ctrl+Click)\n")
-        cat("2. Required files: .shp, .shx, .dbf\n")
-        cat("3. All files must have the SAME base name (e.g., America_Sul.*)\n")
-        cat("4. Try uploading again with all files selected at once\n")
+      output$shapefile_status <- renderUI({
+        div(class = "upload-status-error",
+          tags$strong("✗ Error loading shapefile:"),
+          tags$br(),
+          tags$small(e$message),
+          tags$br(), tags$br(),
+          tags$strong("Troubleshooting:"),
+          tags$br(),
+          tags$small("1. Make sure you selected ALL files together (use Ctrl+Click)"),
+          tags$br(),
+          tags$small("2. Required files: .shp, .shx, .dbf"),
+          tags$br(),
+          tags$small("3. All files must have the SAME base name (e.g., America_Sul.*)"),
+          tags$br(),
+          tags$small("4. Try uploading again with all files selected at once")
+        )
       })
     })
   })
