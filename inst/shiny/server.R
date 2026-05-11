@@ -1706,6 +1706,13 @@ function(input, output, session) {
         data_store$pres_abs_irregular <- NULL
         data_store$mst_pres_abs <- NULL
         data_store$mst_context <- NULL
+        
+        # Verify harmonization with name.check
+        final_check <- if (!is.null(tree_clean)) {
+          ape::name.check(tree_clean, occ_data_clean)
+        } else {
+          "OK"
+        }
 
         output$harmonization_output <- renderPrint({
           cat("=== Tree/Data Harmonization Complete ===\n\n")
@@ -1714,6 +1721,18 @@ function(input, output, session) {
           cat("Remaining occurrence rows:", nrow(occ_data_clean), "\n")
           cat("Remaining occurrence taxa:", length(unique(occ_data_clean$spp)), "\n")
           cat("Remaining tree tips:", if (is.null(tree_clean)) 0 else length(tree_clean$tip.label), "\n")
+          cat("\n")
+          if (identical(final_check, "OK")) {
+            cat("✓ Verification: Tree and data are perfectly synchronized!\n")
+          } else {
+            cat("⚠ Verification result:\n")
+            if (!is.null(final_check$tree_not_data) && length(final_check$tree_not_data) > 0) {
+              cat("  Tree taxa not in data:", paste(final_check$tree_not_data, collapse = ", "), "\n")
+            }
+            if (!is.null(final_check$data_not_tree) && length(final_check$data_not_tree) > 0) {
+              cat("  Data taxa not in tree:", paste(final_check$data_not_tree, collapse = ", "), "\n")
+            }
+          }
         })
 
         output$cleaned_data_summary <- renderPrint({
