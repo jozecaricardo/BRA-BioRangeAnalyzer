@@ -1666,7 +1666,7 @@ function(input, output, session) {
         
         # Convert occurrence data to matrix with species as row names for name.check
         # This allows duplicate species names (unlike data frame)
-        occ_matrix <- matrix(as.matrix(occ_data[, c("long", "lat")]), 
+        occ_matrix <- matrix(as.matrix(occ_data[, c(2, 3)]), 
                             nrow(occ_data), 2,
                             dimnames = list(occ_data[, 1], colnames(occ_data)[c(2, 3)]))
         
