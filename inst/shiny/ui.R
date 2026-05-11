@@ -148,7 +148,27 @@ shinyUI(
     ),
     
     # Tab 1.5: Shapefile Input
-      class = "guidance-text",
+    tabPanel(
+      "Shapefile Input",
+      icon = icon("map"),
+      div(
+        class = "container-fluid",
+        style = "padding: 20px;",
+        div(
+          class = "step-title",
+          "Step 1.5: Shapefile Input"
+        ),
+        div(
+          class = "guidance-text",
+          p("Upload your study area shapefile for geographic analysis, phylogeographic visualization, and range extrapolation.")
+        ),
+        div(
+          class = "row",
+          div(
+            class = "col-md-12",
+            h4("Study Area Shapefile (Required)"),
+            div(
+              class = "guidance-text",
               p(strong("Shapefile 1 (required): study-area boundary")),
               p("Use this shapefile to delimit where extrapolation runs and where regular grid cells are created."),
               p("You can use a simple boundary polygon (e.g., Brazil outline only) to speed up analyses."),
@@ -340,8 +360,6 @@ shinyUI(
         )
       )
     ),
-    
-    # Tab 4.5: Tree on Map
     
     # Tab 5: Range Extrapolation
     tabPanel(
