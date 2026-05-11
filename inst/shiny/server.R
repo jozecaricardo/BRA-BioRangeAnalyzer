@@ -1690,21 +1690,15 @@ function(input, output, session) {
         }
         
         # Remove data-only taxa from occurrence data
-        occ_data_clean <- if (length(taxa_data_only) > 0) {
-          occ_data[occ_data$spp %in% tree_clean$tip.label, , drop = FALSE]
+        if (is.null(tree_clean)) {
+          occ_data_clean <- occ_data[0, , drop = FALSE]
         } else {
-          occ_data[occ_data$spp %in% tree_clean$tip.label, , drop = FALSE]
+          occ_data_clean <- occ_data[occ_data$spp %in% tree_clean$tip.label, , drop = FALSE]
         }
         
         if (nrow(occ_data_clean) == 0) {
           stop("No overlapping taxa between occurrence data and tree. Harmonization would remove all occurrence rows.")
         }
-        
-        # Verify that required columns exist
-        if (!all(c("spp", "long", "lat") %in% names(occ_data_clean))) {
-          stop("Occurrence data must include columns spp, long and lat.")
-        }
-        # Keep all columns, don't restrict to just spp, long, lat
 
         data_store$occurrence <- occ_data_clean
         data_store$tree <- tree_clean
