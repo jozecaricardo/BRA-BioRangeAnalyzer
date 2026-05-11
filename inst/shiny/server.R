@@ -2482,6 +2482,17 @@ function(input, output, session) {
         shape <- load_shapefile_from_files(input$study_area_shapefile)
         data_store$study_area_shapefile <- shape
         
+        # Extract available columns from shapefile
+        shapefile_columns <- names(as.data.frame(shape))
+        # Remove geometry column if present
+        shapefile_columns <- shapefile_columns[shapefile_columns != "geom"]
+        
+        # Update column choices for irregular polygon dropdowns
+        shiny::updateSelectInput(session, "points_irregular_bin_id_column",
+                                choices = c("(Auto-detect)" = "", shapefile_columns))
+        shiny::updateSelectInput(session, "irregular_richness_id_column",
+                                choices = c("(Auto-detect)" = "", shapefile_columns))
+        
         output$shapefile_status <- renderText({
           file_list <- paste(sapply(seq_len(nrow(input$study_area_shapefile)), function(i) {
             paste0("<small>✓ ", input$study_area_shapefile$name[i], "</small>")

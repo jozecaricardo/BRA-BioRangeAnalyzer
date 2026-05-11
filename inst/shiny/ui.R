@@ -430,11 +430,10 @@ shinyUI(
               ),
               conditionalPanel(
                 condition = "input.points_occurrence_mode == 'irregular_direct' || input.points_occurrence_mode == 'irregular_with_grid'",
-                p(strong("Shapefile 2 (optional): irregular polygons for counting/reporting units")),
-                p("Examples: states, ecoregions, municipalities. These polygons define output columns/areas for this workflow."),
-                fileInput("points_irregular_bins_shapefile", "Choose ALL irregular polygon files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
-                selectInput("points_irregular_bin_id_column", "Irregular polygon ID column:", choices = c("(Auto-detect)" = ""), selected = ""),
-                p("Available columns are populated automatically after upload.", style = "font-size: 12px; color: #666;")
+                p(strong("Irregular polygons for counting/reporting units")),
+                p("Examples: states, ecoregions, municipalities. Choose which column from your study area shapefile (loaded in Step 1) defines these units."),
+                selectInput("points_irregular_bin_id_column", "Irregular polygon ID column (from study area shapefile):", choices = c("(No shapefile loaded)" = ""), selected = ""),
+                p("Available columns are populated from the shapefile loaded in Step 1.", style = "font-size: 12px; color: #666;")
               ),
               conditionalPanel(
                 condition = "input.points_occurrence_mode == 'regular_grid'",
@@ -460,9 +459,8 @@ shinyUI(
               checkboxInput("enable_irregular_richness", "Compute diversity by irregular polygons", value = FALSE),
               conditionalPanel(
                 condition = "input.enable_irregular_richness == true",
-                p("Upload all subdivision shapefile files (.shp, .shx, .dbf, .prj):"),
-                fileInput("irregular_richness_shapefile", "Choose ALL subdivision shapefile files together:", accept = c(".shp", ".dbf", ".shx", ".prj"), multiple = TRUE),
-                selectInput("irregular_richness_id_column", "Subdivision ID column:", choices = c("(Auto-detect)" = ""), selected = ""),
+                p("Choose which column from your study area shapefile (loaded in Step 1) defines the subdivisions:"),
+                selectInput("irregular_richness_id_column", "Subdivision ID column (from study area shapefile):", choices = c("(No shapefile loaded)" = ""), selected = ""),
                 p("When this option is enabled, the output matrix is aggregated to these subdivisions (recommended for BioGeoBEARS).", style = "font-size: 12px; color: #666;"),
                 p("If left empty, the app will auto-detect a suitable ID column.", style = "font-size: 12px; color: #666;")
               )
