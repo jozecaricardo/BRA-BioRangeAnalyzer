@@ -13,7 +13,7 @@ function(input, output, session) {
     loaded_shapefiles = list(),
     loaded_rasters = list(),
     shapefile_info = list(),
-    species_colors = character(0),
+    species_colors = list(),
     distance_matrix = NULL,
     dispersal_matrix = NULL,
     extinction_matrix = NULL,
@@ -800,111 +800,6 @@ function(input, output, session) {
     stop("Could not read occurrence table. Please provide a valid CSV/TXT with header.")
   }
   
-  # Reactive values to track validation status
-  validation_status <- reactiveValues(
-    occurrence_loaded = FALSE,
-    tree_loaded = FALSE
-  )
-  
-  # Render occurrence validator
-  output$occurrence_validator <- renderUI({
-    if (isTRUE(validation_status$occurrence_loaded)) {
-      div(
-        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
-        "✓"
-      )
-    } else {
-      NULL
-    }
-  })
-  
-  # Render data validator
-  output$data_validator <- renderUI({
-    if (isTRUE(validation_status$occurrence_loaded)) {
-      div(
-        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
-        "✓"
-      )
-    } else {
-      NULL
-    }
-  })
-  
-  # Render tree validator
-  output$tree_validator <- renderUI({
-    if (isTRUE(validation_status$tree_loaded)) {
-      div(
-        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
-        "✓"
-      )
-    } else {
-      NULL
-    }
-  })
-  
-  # Render shapefile validator
-  output$shapefile_step1_validator <- renderUI({
-    if (isTRUE(validation_status$shapefile_loaded)) {
-      div(
-        style = "display: inline-block; width: 30px; height: 30px; border-radius: 50%; background-color: #28a745; border: 2px solid #1e7e34; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;",
-        "✓"
-      )
-    } else {
-      NULL
-    }
-  })
-  
-  # Load shapefile from Step 1.5
-  observeEvent(input$load_shapefile, {
-    tryCatch({
-      if (is.null(input$study_area_shapefile) || nrow(input$study_area_shapefile) == 0) {
-        output$shapefile_status <- renderPrint({
-          cat("Please select shapefile files\n")
-        })
-      } else {
-        # Use the load_shapefile_from_files helper function
-        shapefile <- load_shapefile_from_files(input$study_area_shapefile)
-        
-        # Store in data_store
-        data_store$geometry <- shapefile
-        validation_status$shapefile_loaded <- TRUE
-        
-        output$shapefile_validator <- renderUI({
-          div(
-            style = "color: green; font-size: 18px; font-weight: bold;",
-            "✓ Shapefile loaded"
-          )
-        })
-        
-        output$shapefile_status <- renderPrint({
-          cat("✓ Shapefile loaded successfully!\n")
-          cat("Number of features:", nrow(shapefile), "\n")
-          cat("CRS:", sf::st_crs(shapefile)$input, "\n")
-          cat("Files uploaded:", nrow(input$study_area_shapefile), "\n")
-          for (i in seq_len(nrow(input$study_area_shapefile))) {
-            cat("  ✓", input$study_area_shapefile$name[i], "\n")
-          }
-        })
-      }
-    }, error = function(e) {
-      validation_status$shapefile_loaded <- FALSE
-      output$shapefile_validator <- renderUI({
-        div(
-          style = "color: red; font-size: 18px; font-weight: bold;",
-          "✗ Error loading shapefile"
-        )
-      })
-      output$shapefile_status <- renderPrint({
-        cat("✗ Error loading shapefile:\n", e$message, "\n\n")
-        cat("Troubleshooting:\n")
-        cat("1. Make sure you selected ALL files together (use Ctrl+Click)\n")
-        cat("2. Required files: .shp, .shx, .dbf\n")
-        cat("3. All files must have the SAME base name (e.g., America_Sul.*)\n")
-        cat("4. Try uploading again with all files selected at once\n")
-      })
-    })
-  })
-  
   observeEvent(input$load_occurrence, {
     tryCatch({
       if (is.null(input$occurrence_file)) {
@@ -957,7 +852,6 @@ function(input, output, session) {
           })
         }
         
-        validation_status$occurrence_loaded <- TRUE
         output$data_status <- renderPrint({
           cat("✓ Occurrence data loaded successfully!\n")
           cat("Rows:", nrow(data_store$occurrence), "\n")
@@ -966,7 +860,6 @@ function(input, output, session) {
         })
       }
     }, error = function(e) {
-      validation_status$occurrence_loaded <- FALSE
       output$data_status <- renderPrint({
         cat("Error loading data:\n", e$message, "\n")
       })
@@ -1016,7 +909,6 @@ function(input, output, session) {
 
         data_store$tree <- tree
         shiny::updateCheckboxInput(session, "show_node_labels", value = FALSE)
-        validation_status$tree_loaded <- TRUE
 
         output$tree_load_status <- renderPrint({
           cat("✓ Tree loaded successfully!\n")
@@ -1025,7 +917,6 @@ function(input, output, session) {
         })
       }
     }, error = function(e) {
-      validation_status$tree_loaded <- FALSE
       output$tree_load_status <- renderPrint({
         cat("Error loading tree:\n", e$message, "\n")
       })
@@ -1041,20 +932,7 @@ function(input, output, session) {
       })
     } else {
       tree <- data_store$tree
-      # Check for polytomies and update checkbox accordingly
-      n_tips <- ape::Ntip(tree)
-      n_nodes <- tree$Nnode %||% 0
-      has_polytomy <- FALSE
-      if (n_nodes > 0) {
-        for (node in (n_tips + 1):(n_tips + n_nodes)) {
-          descendants <- which(tree$edge[, 1] == node)
-          if (length(descendants) > 2) {
-            has_polytomy <- TRUE
-            break
-          }
-        }
-      }
-      shiny::updateCheckboxInput(session, "show_node_labels", value = has_polytomy)
+      shiny::updateCheckboxInput(session, "show_node_labels", value = TRUE)
       output$tree_validation_output <- renderPrint({
         n_tips <- ape::Ntip(tree)
         n_nodes <- tree$Nnode %||% 0
@@ -1069,27 +947,6 @@ function(input, output, session) {
           cat("Branch length range:", min(tree$edge.length), "-", max(tree$edge.length), "\n")
         } else {
           cat("Observation: branch lengths are missing (this does not block visualization).\n")
-        }
-        
-        # Check for polytomies
-        polytomy_nodes <- c()
-        if (n_nodes > 0) {
-          for (node in (n_tips + 1):(n_tips + n_nodes)) {
-            descendants <- which(tree$edge[, 1] == node)
-            n_descendants <- length(descendants)
-            if (n_descendants > 2) {
-              polytomy_nodes <- c(polytomy_nodes, node)
-            }
-          }
-        }
-        
-        if (length(polytomy_nodes) > 0) {
-          cat("\n⚠️  WARNING: Tree contains polytomies (soft polytomies)\n")
-          cat("Number of polytomous nodes:", length(polytomy_nodes), "\n")
-          cat("Affected node IDs:", paste(polytomy_nodes, collapse = ", "), "\n")
-          cat("Note: Polytomies may affect some phylogenetic analyses.\n")
-        } else {
-          cat("\n✓ Tree is fully bifurcating (no polytomies).\n")
         }
       })
     }
@@ -1389,10 +1246,7 @@ function(input, output, session) {
     })
   })
   
-  # ===== TREE ON MAP TAB =====
-  
-  
-  # ===== DATA PREPROCESSING TAB ====
+  # ===== DATA PREPROCESSING TAB =====
 
   output$problematic_recommendation <- renderPrint({
     method <- input$extrap_method %||% "buffer"
@@ -1409,72 +1263,6 @@ function(input, output, session) {
       cat("- Convex hull needs >= 3 points per taxon.\n")
       cat("- Recommended strategy: remove singletons + doubletons.\n")
     }
-  })
-  
-  # Filter occurrence points by shapefile
-  observeEvent(input$filter_by_shapefile, {
-    if (is.null(data_store$occurrence) || is.null(data_store$geometry)) {
-      output$shapefile_filter_output <- renderPrint({
-        cat("Error: Please load occurrence data and shapefile first\n")
-      })
-      return()
-    }
-    
-    tryCatch({
-      occurrence <- data_store$occurrence
-      geometry <- data_store$geometry
-      
-      # Convert geometry to sf if it's a SpatVector
-      if (inherits(geometry, "SpatVector")) {
-        geometry <- sf::st_as_sf(geometry)
-      }
-      
-      # Filter only valid geometries (remove invalid ones)
-      # This is more robust than trying to fix invalid geometries
-      if (inherits(geometry, "sf")) {
-        valid_geoms <- sf::st_is_valid(geometry)
-        if (!all(valid_geoms)) {
-          geometry <- geometry[valid_geoms, ]
-        }
-      }
-      
-      # Convert occurrence points to sf object
-      points_sf <- sf::st_as_sf(
-        occurrence,
-        coords = c("long", "lat"),
-        crs = sf::st_crs(geometry)
-      )
-      
-      # Find points that intersect with shapefile
-      points_in_shape <- sf::st_intersects(points_sf, geometry, sparse = FALSE)
-      points_in_shape <- apply(points_in_shape, 1, any)
-      
-      # Filter occurrence data
-      n_before <- nrow(occurrence)
-      occurrence_filtered <- occurrence[points_in_shape, ]
-      n_after <- nrow(occurrence_filtered)
-      n_removed <- n_before - n_after
-      
-      # Update data_store
-      data_store$occurrence <- occurrence_filtered
-      data_store$analysis_occurrence <- NULL
-      data_store$analysis_tree <- NULL
-      
-      output$shapefile_filter_output <- renderPrint({
-        cat("Shapefile Filter Results:\n")
-        cat("========================\n")
-        cat("Points before filtering:", n_before, "\n")
-        cat("Points after filtering:", n_after, "\n")
-        cat("Points removed:", n_removed, "\n")
-        if (n_removed > 0) {
-          cat("\nNote: Points outside the shapefile have been removed.\n")
-        }
-      })
-    }, error = function(e) {
-      output$shapefile_filter_output <- renderPrint({
-        cat("Error filtering by shapefile:\n", e$message, "\n")
-      })
-    })
   })
   
   observeEvent(input$detect_problems, {
@@ -1973,25 +1761,24 @@ function(input, output, session) {
     updateSelectInput(session, "irregular_bin_id_column", choices = choices, selected = "")
   })
 
-  # Update ID column choices when study area shapefile is loaded (Step 1.5)
-  observe({
-    if (!is.null(data_store$geometry)) {
-      tryCatch({
-        # Get columns from the loaded geometry
-        geom_sf <- normalize_to_wgs84_sf(data_store$geometry)
-        cols <- setdiff(names(geom_sf), "geometry")
-        cols <- cols[sapply(cols, function(cc) sum(!is.na(geom_sf[[cc]])) > 0)]
-        
-        # Update both ID column selectors
-        choices <- c("(Auto-detect)" = "", stats::setNames(cols, cols))
-        updateSelectInput(session, "irregular_richness_id_column", choices = choices, selected = "")
-        updateSelectInput(session, "points_irregular_bin_id_column", choices = choices, selected = "")
-      }, error = function(e) {
-        # If error, reset to auto-detect
-        updateSelectInput(session, "irregular_richness_id_column", choices = c("(Auto-detect)" = ""), selected = "")
-        updateSelectInput(session, "points_irregular_bin_id_column", choices = c("(Auto-detect)" = ""), selected = "")
-      })
+  observeEvent(input$irregular_richness_shapefile, {
+    if (is.null(input$irregular_richness_shapefile) || nrow(input$irregular_richness_shapefile) == 0) {
+      updateSelectInput(session, "irregular_richness_id_column", choices = c("(Auto-detect)" = ""), selected = "")
+      return()
     }
+    cols <- tryCatch(available_id_columns_from_upload(input$irregular_richness_shapefile), error = function(e) character(0))
+    choices <- c("(Auto-detect)" = "", stats::setNames(cols, cols))
+    updateSelectInput(session, "irregular_richness_id_column", choices = choices, selected = "")
+  })
+
+  observeEvent(input$points_irregular_bins_shapefile, {
+    if (is.null(input$points_irregular_bins_shapefile) || nrow(input$points_irregular_bins_shapefile) == 0) {
+      updateSelectInput(session, "points_irregular_bin_id_column", choices = c("(Auto-detect)" = ""), selected = "")
+      return()
+    }
+    cols <- tryCatch(available_id_columns_from_upload(input$points_irregular_bins_shapefile), error = function(e) character(0))
+    choices <- c("(Auto-detect)" = "", stats::setNames(cols, cols))
+    updateSelectInput(session, "points_irregular_bin_id_column", choices = choices, selected = "")
   })
 
   compute_irregular_richness_from_layers <- function(loaded_shapefiles,
@@ -2593,7 +2380,37 @@ function(input, output, session) {
     }
   })
 
-
+  # Handle shapefile upload
+  observeEvent(input$study_area_shapefile, {
+    tryCatch({
+      if (is.null(input$study_area_shapefile) || nrow(input$study_area_shapefile) == 0) {
+        output$shapefile_status <- renderPrint({
+          cat("No shapefile loaded\n")
+        })
+      } else {
+        # Load shapefile from multiple files
+        shape <- load_shapefile_from_files(input$study_area_shapefile)
+        data_store$study_area_shapefile <- shape
+        
+        output$shapefile_status <- renderPrint({
+          cat("✓ Shapefile loaded successfully!\n")
+          cat("Files uploaded:", nrow(input$study_area_shapefile), "\n")
+          for (i in seq_len(nrow(input$study_area_shapefile))) {
+            cat("  ✓", input$study_area_shapefile$name[i], "\n")
+          }
+        })
+      }
+    }, error = function(e) {
+      output$shapefile_status <- renderPrint({
+        cat("✗ Error loading shapefile:\n", e$message, "\n\n")
+        cat("Troubleshooting:\n")
+        cat("1. Make sure you selected ALL files together (use Ctrl+Click)\n")
+        cat("2. Required files: .shp, .shx, .dbf\n")
+        cat("3. All files must have the SAME base name (e.g., America_Sul.*)\n")
+        cat("4. Try uploading again with all files selected at once\n")
+      })
+    })
+  })
 
   observeEvent(input$plot_points_only, {
     if (is.null(data_store$occurrence) || nrow(data_store$occurrence) == 0) {
@@ -2772,15 +2589,15 @@ function(input, output, session) {
         data_store$regular_grid_res <- NULL
         
         # Check if shapefile is loaded
-        if (is.null(data_store$geometry)) {
+        if (is.null(data_store$study_area_shapefile)) {
           append_extrap_log("Study-area shapefile not loaded.")
           output$extrap_status <- renderPrint({
-            cat("Error: Please upload a shapefile first in Step 1.5!\n")
+            cat("Error: Please upload a shapefile first!\n")
           })
           return()
         }
         
-        shape_file <- data_store$geometry
+        shape_file <- data_store$study_area_shapefile
         
         # Ensure occurrence data has the correct column names for the functions
         # calcRange_convexHull expects 'species', 'long', 'lat'
@@ -2902,11 +2719,11 @@ function(input, output, session) {
             )
           } else if (method == "occurrence_only") {
             if (points_use_irregular) {
-              if (is.null(data_store$geometry)) {
-                stop("Please upload the study area shapefile in Step 1.5 to build the point-based matrix.")
+              if (is.null(input$points_irregular_bins_shapefile) || nrow(input$points_irregular_bins_shapefile) == 0) {
+                stop("Please upload the irregular polygons shapefile to build the point-based matrix.")
               }
 
-              bins_shape <- data_store$geometry
+              bins_shape <- load_shapefile_from_files(input$points_irregular_bins_shapefile)
               bins_sf <- sf::st_as_sf(bins_shape)
               bin_col <- input$points_irregular_bin_id_column
 
@@ -3188,8 +3005,8 @@ function(input, output, session) {
         data_store$study_area <- shape_file
         
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
-          if (is.null(data_store$geometry)) {
-            stop("To compute diversity by irregular polygons, please upload the study area shapefile in Step 1.5.")
+          if (is.null(input$irregular_richness_shapefile) || nrow(input$irregular_richness_shapefile) == 0) {
+            stop("To compute diversity by irregular polygons, upload the SECOND subdivision shapefile (.shp, .shx, .dbf).")
           }
         }
 
@@ -3226,7 +3043,7 @@ function(input, output, session) {
         ensure_species_palette(extra_species = unique(occ_data$spp))
 
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
-          bins_shape <- data_store$geometry
+          bins_shape <- load_shapefile_from_files(input$irregular_richness_shapefile)
           richness_result <- compute_irregular_richness_from_layers(
             loaded_shapefiles = data_store$loaded_shapefiles,
             shapefile_info = data_store$shapefile_info,
@@ -3442,23 +3259,6 @@ function(input, output, session) {
 
     map_occurrence <- data_store$analysis_occurrence %||% data_store$occurrence
 
-    # Ensure species palette is populated before plotting
-    species_from_occ <- if (!is.null(map_occurrence) && nrow(map_occurrence) > 0) {
-      unique(as.character(map_occurrence$spp))
-    } else {
-      character(0)
-    }
-    species_from_shapes <- if (!is.null(data_store$loaded_shapefiles) && length(data_store$loaded_shapefiles) > 0) {
-      unique(vapply(seq_along(data_store$loaded_shapefiles), function(i) {
-        layer_key <- names(data_store$loaded_shapefiles)[i]
-        layer_info <- data_store$shapefile_info[[layer_key]]
-        layer_species_name(layer_info, layer_key)
-      }, character(1)))
-    } else {
-      character(0)
-    }
-    ensure_species_palette(extra_species = unique(c(species_from_occ, species_from_shapes)))
-
     legend_species <- character(0)
     legend_colors <- character(0)
 
@@ -3487,8 +3287,8 @@ function(input, output, session) {
       legend_colors <- base_colors
     }
 
-    if (!is.null(data_store$geometry)) {
-      plot(data_store$geometry, col = "gray95", border = "gray35", axes = TRUE)
+    if (!is.null(data_store$study_area_shapefile)) {
+      plot(data_store$study_area_shapefile, col = "gray95", border = "gray35", axes = TRUE)
     } else if (!is.null(map_occurrence) && nrow(map_occurrence) > 0) {
       plot(
         range(map_occurrence$long, na.rm = TRUE),
@@ -3509,7 +3309,6 @@ function(input, output, session) {
       }
     }
 
-    # Plot MST shapefiles (extrapolation results)
     if (!is.null(data_store$loaded_shapefiles) && length(data_store$loaded_shapefiles) > 0) {
       for (i in seq_along(data_store$loaded_shapefiles)) {
         tryCatch({
@@ -3534,15 +3333,18 @@ function(input, output, session) {
           is_grid_layer <- grepl("^q[0-9]+$", base_name, ignore.case = TRUE) || grepl("^GRIDS_", base_name, ignore.case = TRUE)
           species_color <- unname(data_store$species_colors[species_name])
           if (is.na(species_color)) species_color <- "#FF6B6B"
+
           shp_sf <- normalize_to_wgs84_sf(data_store$loaded_shapefiles[[i]])
           empty_idx <- tryCatch(sf::st_is_empty(shp_sf), error = function(e) rep(FALSE, nrow(shp_sf)))
           keep_idx <- is.na(empty_idx) | !empty_idx
           if (!all(keep_idx)) shp_sf <- shp_sf[keep_idx, , drop = FALSE]
           if (nrow(shp_sf) == 0) next
+
           geom_types <- as.character(sf::st_geometry_type(shp_sf, by_geometry = TRUE))
           poly_idx <- !is.na(geom_types) & geom_types %in% c("POLYGON", "MULTIPOLYGON")
           line_idx <- !is.na(geom_types) & geom_types %in% c("LINESTRING", "MULTILINESTRING")
           geom_collection_idx <- !is.na(geom_types) & geom_types %in% c("GEOMETRYCOLLECTION", "GEOMETRY")
+
           if (any(poly_idx)) {
             plot(sf::st_geometry(shp_sf[poly_idx, , drop = FALSE]), add = TRUE, border = species_color, col = grDevices::adjustcolor(species_color, alpha.f = poly_opacity), lwd = 1)
           }
@@ -3553,6 +3355,7 @@ function(input, output, session) {
               legend_colors <- c(legend_colors, species_color)
             }
           }
+
           if (any(geom_collection_idx)) {
             extracted_line <- suppressWarnings(
               sf::st_collection_extract(shp_sf[geom_collection_idx, , drop = FALSE], "LINESTRING")
@@ -3660,9 +3463,9 @@ function(input, output, session) {
     map_occurrence <- data_store$analysis_occurrence %||% data_store$occurrence
     
     # Add study area shapefile if available
-    if (!is.null(data_store$geometry)) {
+    if (!is.null(data_store$study_area_shapefile)) {
       tryCatch({
-        shapefile_sf <- normalize_to_wgs84_sf(data_store$geometry)
+        shapefile_sf <- normalize_to_wgs84_sf(data_store$study_area_shapefile)
         m <- m %>%
           leaflet::addPolygons(
             data = shapefile_sf,
