@@ -1700,11 +1700,11 @@ function(input, output, session) {
           stop("No overlapping taxa between occurrence data and tree. Harmonization would remove all occurrence rows.")
         }
         
-        # Ensure data frame has correct columns in correct order
+        # Verify that required columns exist
         if (!all(c("spp", "long", "lat") %in% names(occ_data_clean))) {
           stop("Occurrence data must include columns spp, long and lat.")
         }
-        occ_data_clean <- occ_data_clean[, c("spp", "long", "lat")]
+        # Keep all columns, don't restrict to just spp, long, lat
 
         data_store$occurrence <- occ_data_clean
         data_store$tree <- tree_clean
