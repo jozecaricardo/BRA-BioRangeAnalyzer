@@ -13,7 +13,7 @@ function(input, output, session) {
     loaded_shapefiles = list(),
     loaded_rasters = list(),
     shapefile_info = list(),
-    species_colors = list(),
+    species_colors = character(0),
     distance_matrix = NULL,
     dispersal_matrix = NULL,
     extinction_matrix = NULL,
@@ -1391,209 +1391,6 @@ function(input, output, session) {
   
   # ===== TREE ON MAP TAB =====
   
-  output$tree_on_map_plot <- renderPlot({
-    # Check if all required data is available
-    if (is.null(data_store$tree) || is.null(data_store$occurrence) || is.null(data_store$geometry)) {
-      plot.new()
-      text(0.5, 0.5, "Please load tree, occurrence data, and shapefile first",
-           cex = 1.2, col = "red", adj = c(0.5, 0.5))
-      return(invisible(NULL))
-    }
-    
-    tryCatch({
-      # Use analysis_tree (processed/harmonized) if available, otherwise use original tree
-      tree <- if (!is.null(data_store$analysis_tree)) data_store$analysis_tree else data_store$tree
-      # Use analysis_occurrence (processed) if available, otherwise use original occurrence
-      occurrence <- if (!is.null(data_store$analysis_occurrence)) data_store$analysis_occurrence else data_store$occurrence
-      geometry <- data_store$geometry
-      species_colors <- data_store$species_colors
-      
-      # Validate tree (check for phylo-like structure instead of class)
-      if (is.null(tree) || !is.list(tree) || is.null(tree$edge) || is.null(tree$tip.label)) {
-        stop("Invalid tree object - must be a phylo object with edge and tip.label")
-      }
-      
-      # Validate occurrence data
-      if (is.null(occurrence) || nrow(occurrence) == 0) {
-        stop("No occurrence data available")
-      }
-      
-      if (!all(c("long", "lat", "spp") %in% names(occurrence))) {
-        stop("Occurrence data must have 'long', 'lat', and 'spp' columns")
-      }
-      
-      # Prepare coordinates: LAT, LONG format (inverted for phylo.to.map)
-      # Use all occurrence records (no aggregation)
-      coords <- as.matrix(occurrence[, c("lat", "long")])
-      rownames(coords) <- occurrence$spp
-      
-      # Use ALL occurrence records (not just first per species)
-      # This ensures all points are shown on the map
-      coords_filtered <- coords
-      
-      # Validate that we have coordinates
-      if (nrow(coords_filtered) == 0) {
-        stop("No coordinates found")
-      }
-      
-      # After Harmonize Tree <-> Data in preprocessing, all tree tips should have coordinates
-      # Just verify this is the case
-      missing_tips <- setdiff(tree$tip.label, rownames(coords_filtered))
-      if (length(missing_tips) > 0) {
-        stop(paste("Tree tips without occurrence data:", paste(missing_tips, collapse = ", "), 
-                   "\nPlease ensure you ran 'Harmonize Tree <-> Data' in Data Preprocessing."))
-      }
-      
-      # Create phylo.to.map object using user shapefile to clip world map
-      # This ensures only the user-defined area is shown
-      if (requireNamespace("maps", quietly = TRUE)) {
-        phymap <- tryCatch({
-          # Get world map
-          world_map <- maps::map("worldHires", plot = FALSE)
-          
-          # Convert user shapefile to sf if needed
-          shape_sf <- if (inherits(geometry, "SpatVector")) {
-            sf::st_as_sf(geometry)
-          } else {
-            geometry
-          }
-          
-          # Clip world map to user shapefile extent
-          # Create a simple clipping approach using bounding box
-          bbox <- sf::st_bbox(shape_sf)
-          
-          # Use worldHires with bounding box as regions
-          phytools::phylo.to.map(
-            tree = tree,
-            coords = coords_filtered,
-            database = "worldHires",
-            plot = FALSE,
-            direction = "rightwards",
-            rotate = FALSE
-          )
-        }, error = function(e) {
-          # Fallback to regular world map
-          phytools::phylo.to.map(
-            tree = tree,
-            coords = coords_filtered,
-            database = "world",
-            plot = FALSE,
-            direction = "rightwards",
-            rotate = FALSE
-          )
-        })
-      } else {
-        stop("maps package is required for map database")
-      }
-      
-      # Identify countries for each occurrence point using rnaturalearth
-      country_colors <- c()
-      
-      if (requireNamespace("rnaturalearth", quietly = TRUE)) {
-        tryCatch({
-          # Get world countries shapefile
-          countries <- rnaturalearth::ne_countries(scale = 10, returnclass = "sf")
-          
-          # Fix geometry issues in countries shapefile
-          # Filter only valid geometries
-          valid_countries <- countries[sf::st_is_valid(countries), ]
-          if (nrow(valid_countries) == 0) {
-            # If no valid geometries, try to fix them
-            valid_countries <- sf::st_make_valid(countries)
-            valid_countries <- valid_countries[sf::st_is_valid(valid_countries), ]
-          }
-          
-          # Create sf object from occurrence data
-          occurrence_sf <- sf::st_as_sf(
-            data.frame(
-              spp = occurrence$spp,
-              long = occurrence$long,
-              lat = occurrence$lat
-            ),
-            coords = c("long", "lat"),
-            crs = 4326
-          )
-          
-          # Find which country each point is in
-          # Use st_intersects instead of st_within for more robust matching
-          country_assignment <- sf::st_join(occurrence_sf, valid_countries[, c("name", "geometry")], join = sf::st_intersects)
-          occurrence$country <- country_assignment$name
-          
-          # Get unique countries and assign colors
-          unique_countries <- unique(occurrence$country[!is.na(occurrence$country)])
-          n_countries <- length(unique_countries)
-          
-          if (n_countries > 0) {
-            # Create color palette for countries using viridis
-            country_colors <- setNames(
-              viridis::viridis(n_countries),
-              unique_countries
-            )
-            cat("Found", n_countries, "countries:\n")
-            cat(paste(unique_countries, collapse = ", "), "\n")
-          } else {
-            cat("Warning: No countries detected. Using default colors.\n")
-          }
-        }, error = function(e) {
-          cat("Error detecting countries:", e$message, "\n")
-          NULL
-        })
-      } else {
-        cat("rnaturalearth package not available. Using default colors.\n")
-      }
-      
-      # Assign colors to tree tips based on majority country of their occurrences
-      # This is the format required by phylo.to.map: a named vector with names = tree$tip.label
-      if (length(country_colors) > 0) {
-        cols <- sapply(tree$tip.label, function(sp) {
-          sp_countries <- occurrence$country[occurrence$spp == sp]
-          sp_countries <- sp_countries[!is.na(sp_countries)]
-          if (length(sp_countries) > 0) {
-            # Get most common country for this species
-            most_common_country <- names(sort(table(sp_countries), decreasing = TRUE)[1])
-            country_colors[most_common_country]
-          } else {
-            "gray"
-          }
-        })
-        names(cols) <- tree$tip.label
-      } else {
-        # Default: all gray
-        cols <- setNames(rep("gray", length(tree$tip.label)), tree$tip.label)
-      }
-      
-      # Plot the phylo.to.map object with dashed lines to localities and occurrence points
-      # split = c(0.3, 0.7) means tree takes 30% of width, map takes 70%
-      plot(phymap,
-           direction = "rightwards",
-           colors = cols,
-           pts = TRUE,
-           ftype = "off",
-           cex.points = c(0, 1),
-           lwd = c(3, 1),
-           split = c(0.3, 0.7))
-      
-      # Add title
-      mtext("Phylogeny on the Map", side = 3, line = 1, cex = 1.3, font = 2)
-      
-      # Add legend with countries if available
-      if (length(country_colors) > 0) {
-        legend("bottomright",
-               legend = names(country_colors),
-               fill = country_colors,
-               cex = 0.8,
-               title = "Countries",
-               bty = "o",
-               bg = "white",
-               box.col = "gray")
-      }
-      
-    }, error = function(e) {
-      plot.new()
-      text(0.5, 0.5, paste("Error creating phylogeographic visualization:\n", e$message),
-           cex = 1, col = "red", adj = c(0.5, 0.5))
-    })
-  }, height = 1200)
   
   # ===== DATA PREPROCESSING TAB ====
 
@@ -3645,6 +3442,23 @@ function(input, output, session) {
 
     map_occurrence <- data_store$analysis_occurrence %||% data_store$occurrence
 
+    # Ensure species palette is populated before plotting
+    species_from_occ <- if (!is.null(map_occurrence) && nrow(map_occurrence) > 0) {
+      unique(as.character(map_occurrence$spp))
+    } else {
+      character(0)
+    }
+    species_from_shapes <- if (!is.null(data_store$loaded_shapefiles) && length(data_store$loaded_shapefiles) > 0) {
+      unique(vapply(seq_along(data_store$loaded_shapefiles), function(i) {
+        layer_key <- names(data_store$loaded_shapefiles)[i]
+        layer_info <- data_store$shapefile_info[[layer_key]]
+        layer_species_name(layer_info, layer_key)
+      }, character(1)))
+    } else {
+      character(0)
+    }
+    ensure_species_palette(extra_species = unique(c(species_from_occ, species_from_shapes)))
+
     legend_species <- character(0)
     legend_colors <- character(0)
 
@@ -3695,6 +3509,7 @@ function(input, output, session) {
       }
     }
 
+    # Plot MST shapefiles (extrapolation results)
     if (!is.null(data_store$loaded_shapefiles) && length(data_store$loaded_shapefiles) > 0) {
       for (i in seq_along(data_store$loaded_shapefiles)) {
         tryCatch({
@@ -3719,18 +3534,15 @@ function(input, output, session) {
           is_grid_layer <- grepl("^q[0-9]+$", base_name, ignore.case = TRUE) || grepl("^GRIDS_", base_name, ignore.case = TRUE)
           species_color <- unname(data_store$species_colors[species_name])
           if (is.na(species_color)) species_color <- "#FF6B6B"
-
           shp_sf <- normalize_to_wgs84_sf(data_store$loaded_shapefiles[[i]])
           empty_idx <- tryCatch(sf::st_is_empty(shp_sf), error = function(e) rep(FALSE, nrow(shp_sf)))
           keep_idx <- is.na(empty_idx) | !empty_idx
           if (!all(keep_idx)) shp_sf <- shp_sf[keep_idx, , drop = FALSE]
           if (nrow(shp_sf) == 0) next
-
           geom_types <- as.character(sf::st_geometry_type(shp_sf, by_geometry = TRUE))
           poly_idx <- !is.na(geom_types) & geom_types %in% c("POLYGON", "MULTIPOLYGON")
           line_idx <- !is.na(geom_types) & geom_types %in% c("LINESTRING", "MULTILINESTRING")
           geom_collection_idx <- !is.na(geom_types) & geom_types %in% c("GEOMETRYCOLLECTION", "GEOMETRY")
-
           if (any(poly_idx)) {
             plot(sf::st_geometry(shp_sf[poly_idx, , drop = FALSE]), add = TRUE, border = species_color, col = grDevices::adjustcolor(species_color, alpha.f = poly_opacity), lwd = 1)
           }
@@ -3741,7 +3553,6 @@ function(input, output, session) {
               legend_colors <- c(legend_colors, species_color)
             }
           }
-
           if (any(geom_collection_idx)) {
             extracted_line <- suppressWarnings(
               sf::st_collection_extract(shp_sf[geom_collection_idx, , drop = FALSE], "LINESTRING")

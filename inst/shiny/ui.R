@@ -148,27 +148,7 @@ shinyUI(
     ),
     
     # Tab 1.5: Shapefile Input
-    tabPanel(
-      "Shapefile Input",
-      icon = icon("map"),
-      div(
-        class = "container-fluid",
-        style = "padding: 20px;",
-        div(
-          class = "step-title",
-          "Step 1.5: Shapefile Input"
-        ),
-        div(
-          class = "guidance-text",
-          p("Upload your study area shapefile for geographic analysis, phylogeographic visualization, and range extrapolation.")
-        ),
-        div(
-          class = "row",
-          div(
-            class = "col-md-12",
-            h4("Study Area Shapefile (Required)"),
-            div(
-              class = "guidance-text",
+      class = "guidance-text",
               p(strong("Shapefile 1 (required): study-area boundary")),
               p("Use this shapefile to delimit where extrapolation runs and where regular grid cells are created."),
               p("You can use a simple boundary polygon (e.g., Brazil outline only) to speed up analyses."),
@@ -362,29 +342,6 @@ shinyUI(
     ),
     
     # Tab 4.5: Tree on Map
-    tabPanel(
-      "Tree on Map",
-      icon = icon("sitemap"),
-      div(
-        class = "container-fluid",
-        style = "padding: 20px;",
-        div(
-          class = "step-title",
-          "Step 3.5: Tree on Map"
-        ),
-        div(
-          class = "guidance-text",
-          p("Visualize the phylogenetic tree overlaid on the geographic distribution of species occurrences.")
-        ),
-        div(
-          class = "row",
-          div(
-            class = "col-md-12",
-            plotOutput("tree_on_map_plot", height = "600px")
-          )
-        )
-      )
-    ),
     
     # Tab 5: Range Extrapolation
     tabPanel(
