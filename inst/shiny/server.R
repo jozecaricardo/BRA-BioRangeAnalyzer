@@ -1600,14 +1600,11 @@ function(input, output, session) {
     } else {
       tryCatch({
         occ_data <- data_store$occurrence
-        # Check for duplicates using available columns
-        cols_to_check <- c("spp", "long", "lat")
-        cols_available <- intersect(cols_to_check, names(occ_data))
-        if (length(cols_available) > 0) {
-          dup_idx <- duplicated(occ_data[, cols_available, drop = FALSE])
-        } else {
-          dup_idx <- rep(FALSE, nrow(occ_data))
+        # Check for duplicates - must have spp, long, lat columns
+        if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
+          stop("Occurrence data must include columns spp, long and lat.")
         }
+        dup_idx <- duplicated(occ_data[, c("spp", "long", "lat"), drop = FALSE])
         duplicate_n <- sum(dup_idx)
 
         if (duplicate_n == 0) {
