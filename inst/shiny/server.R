@@ -1668,7 +1668,7 @@ function(input, output, session) {
         # This allows duplicate species names (unlike data frame)
         occ_matrix <- matrix(as.matrix(occ_data[, c(2, 3)]), 
                             nrow(occ_data), 2,
-                            dimnames = list(occ_data[, 1], colnames(occ_data)[c(2, 3)]))
+                            dimnames = list(occ_data[, 1], colnames(occ_data)[2:3]))
         
         # Use ape::name.check to identify mismatches
         mismatch <- ape::name.check(tree, occ_matrix)
