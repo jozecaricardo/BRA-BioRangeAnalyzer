@@ -1664,17 +1664,13 @@ function(input, output, session) {
         occ_data <- data_store$occurrence
         tree <- data_store$tree
         
-        # Convert occurrence data to data frame with species as row names for name.check
-        occ_df <- as.data.frame(occ_data)
-        rownames(occ_df) <- occ_df$spp
+        # Get unique species names from occurrence data
+        taxa_data <- unique(as.character(occ_data$spp))
+        taxa_tree <- tree$tip.label
         
-        # Use ape::name.check to identify mismatches
-        mismatch <- ape::name.check(tree, occ_df)
-        
-        # Extract taxa that are in tree but not in data
-        taxa_tree_only <- mismatch$tree_not_data
-        # Extract taxa that are in data but not in tree
-        taxa_data_only <- mismatch$data_not_tree
+        # Identify mismatches using setdiff
+        taxa_tree_only <- setdiff(taxa_tree, taxa_data)
+        taxa_data_only <- setdiff(taxa_data, taxa_tree)
         
         # Remove data-only taxa from occurrence data
         occ_data_clean <- if (length(taxa_data_only) > 0) {
