@@ -2039,6 +2039,28 @@ function(input, output, session) {
       left = TRUE
     )
 
+    # Count occurrences separately (only from occ_data, not from extrapolated ranges)
+    n_occ_per_bin <- if (!is.null(occ_data) && nrow(occ_data) > 0) {
+      occ_points <- sf::st_as_sf(
+        occ_data,
+        coords = c("long", "lat"),
+        crs = sf::st_crs(bins_sf)
+      )
+      occ_joined <- sf::st_join(
+        bins_sf[, c(bin_col, "geometry")],
+        occ_points[, c("geometry")],
+        join = sf::st_intersects,
+        left = TRUE
+      )
+      occ_joined %>%
+        sf::st_drop_geometry() %>%
+        dplyr::group_by(.data[[bin_col]]) %>%
+        dplyr::summarise(n_occurrences = dplyr::n(), .groups = "drop")
+    } else {
+      data.frame(bin_id = unique(as.character(bins_sf[[bin_col]])), n_occurrences = 0L)
+      names(data.frame(bin_id = unique(as.character(bins_sf[[bin_col]])), n_occurrences = 0L))[1] <- bin_col
+    }
+    
     species_per_bin <- bins_joined %>%
       sf::st_drop_geometry() %>%
       dplyr::group_by(.data[[bin_col]]) %>%
@@ -2046,7 +2068,8 @@ function(input, output, session) {
         n_species = dplyr::n_distinct(species_id, na.rm = TRUE),
         species_list = paste(sort(unique(stats::na.omit(species_id))), collapse = ", "),
         .groups = "drop"
-      )
+      ) %>%
+      dplyr::left_join(n_occ_per_bin, by = bin_col)
 
     names(species_per_bin)[1] <- "bin_id"
     species_per_bin$species_list[species_per_bin$species_list == ""] <- NA_character_
@@ -2055,6 +2078,7 @@ function(input, output, session) {
       dplyr::left_join(species_per_bin, by = setNames("bin_id", bin_col)) %>%
       dplyr::mutate(
         n_species = ifelse(is.na(n_species), 0L, as.integer(n_species)),
+        n_occurrences = ifelse(is.na(n_occurrences), 0L, as.integer(n_occurrences)),
         species_list = ifelse(is.na(species_list), "", species_list)
       )
 
