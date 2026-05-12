@@ -3938,7 +3938,7 @@ function(input, output, session) {
                   weight = if (is_grid_layer) 0.8 else 1,
                   opacity = if (is_grid_layer) opacity else 1,
                   fillColor = if (is_grid_layer) "#FFFFFF" else species_color,
-                  fillOpacity = if (is_grid_layer) 0 else opacity,
+                  fillOpacity = opacity,
                   popup = if (is_grid_layer) paste("Grid layer:", base_name) else paste("Species:", species_name),
                   options = leaflet::pathOptions(pane = "range-polygons"),
                   group = polygon_group
@@ -3996,7 +3996,7 @@ function(input, output, session) {
                     weight = if (is_grid_layer) 0.8 else 1,
                     opacity = if (is_grid_layer) opacity else 1,
                     fillColor = if (is_grid_layer) "#FFFFFF" else species_color,
-                    fillOpacity = if (is_grid_layer) 0 else opacity,
+                    fillOpacity = opacity,
                     popup = if (is_grid_layer) paste("Grid layer:", base_name) else paste("Species:", species_name),
                     options = leaflet::pathOptions(pane = "range-polygons"),
                     group = polygon_group
