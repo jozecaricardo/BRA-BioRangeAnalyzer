@@ -4186,7 +4186,7 @@ function(input, output, session) {
       leaflet::addProviderTiles("CartoDB.Positron") %>%
       leaflet::addPolygons(
         fillColor = ~pal(n_species),
-        fillOpacity = poly_opacity,
+        fillOpacity = 0.6,
         color = "#333333",
         weight = 1,
         popup = ~paste0(
