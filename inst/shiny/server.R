@@ -1604,7 +1604,10 @@ function(input, output, session) {
         if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
           stop("Occurrence data must include columns spp, long and lat.")
         }
-        dup_idx <- duplicated(occ_data[, c("spp", "long", "lat"), drop = FALSE])
+        
+        # Convert to data frame and check for duplicates across ALL columns
+        occ_data <- as.data.frame(occ_data)
+        dup_idx <- duplicated(occ_data)
         duplicate_n <- sum(dup_idx)
 
         if (duplicate_n == 0) {
