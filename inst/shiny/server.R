@@ -1341,10 +1341,18 @@ function(input, output, session) {
       # Convert back to data frame
       if (nrow(points_inside) > 0) {
         occ_filtered <- as.data.frame(points_inside)
-        # Extract only the columns we need, handling the geometry column
+        
+        # Extract coordinates from geometry if needed
+        if (!all(c("spp", "long", "lat") %in% names(occ_filtered))) {
+          # Extract coordinates from geometry
+          coords <- terra::crds(points_inside)
+          occ_filtered$long <- coords[, 1]
+          occ_filtered$lat <- coords[, 2]
+        }
+        
+        # Keep only the required columns
         cols_to_keep <- c("spp", "long", "lat")
-        cols_available <- intersect(cols_to_keep, names(occ_filtered))
-        occ_filtered <- occ_filtered[, cols_available, drop = FALSE]
+        occ_filtered <- occ_filtered[, cols_to_keep, drop = FALSE]
         
         # Update data store
         data_store$occurrence <- occ_filtered
@@ -1604,7 +1612,12 @@ function(input, output, session) {
         # DEBUG: Print what we have
         cat("[Remove Duplicates] BEFORE: columns = ", paste(names(occ_data), collapse = ", "), "\n")
         cat("[Remove Duplicates] BEFORE: rows = ", nrow(occ_data), "\n")
-        cat("[Remove Duplicates] BEFORE: class = ", class(occ_data), "\n\n")
+        cat("[Remove Duplicates] BEFORE: class = ", class(occ_data), "\n")
+        cat("[Remove Duplicates] BEFORE: str = \n")
+        str(occ_data)
+        cat("\n[Remove Duplicates] BEFORE: head = \n")
+        print(head(occ_data, 3))
+        cat("\n")
         
         # Check for duplicates - must have spp, long, lat columns
         if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
