@@ -454,8 +454,6 @@ shinyUI(
               condition = "input.extrap_method == 'buffer' || input.extrap_method == 'convex_hull' || input.extrap_method == 'mst'",
               tags$hr(),
               h5("Optional: Diversity in Irregular Polygons"),
-              p(strong("Shapefile 2 (optional): subdivisions for diversity and optional matrix aggregation outputs.")),
-              p("Workflow: choose Buffer/Convex Hull/MST + enable this option + upload a SECOND shapefile with subdivisions + choose ID column + click Run Extrapolation once.", style = "font-size: 12px; color: #666;"),
               checkboxInput("enable_irregular_richness", "Compute diversity by irregular polygons", value = FALSE),
               conditionalPanel(
                 condition = "input.enable_irregular_richness == true",
@@ -712,7 +710,7 @@ shinyUI(
             tabPanel(
               "Irregular Polygon Diversity",
               br(),
-              p("How to use this panel: in Step 3, select Buffer/Convex Hull/MST, enable 'Compute diversity by irregular polygons', upload the SECOND subdivision shapefile, choose the subdivision ID column, then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, upload the SECOND shapefile, choose ID column, and run once."),
+              p("How to use this panel: In Step 1, load your study area shapefile. In Step 3, select Buffer/Convex Hull/MST, enable 'Compute diversity by irregular polygons', choose the subdivision ID column from your shapefile, then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, choose ID column, and run once."),
               leaflet::leafletOutput("irregular_bins_map", height = "500px"),
               br(),
               DT::dataTableOutput("irregular_bins_table")

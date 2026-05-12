@@ -3265,36 +3265,49 @@ function(input, output, session) {
         ensure_species_palette(extra_species = unique(occ_data$spp))
 
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
-          bins_shape <- load_shapefile_from_files(input$irregular_richness_shapefile)
-          richness_result <- compute_irregular_richness_from_layers(
-            loaded_shapefiles = data_store$loaded_shapefiles,
-            shapefile_info = data_store$shapefile_info,
-            bins_shape = bins_shape,
-            bin_id_column = input$irregular_richness_id_column
-          )
+          if (!is.null(data_store$study_area_shapefile) && !is.null(input$irregular_richness_id_column) && input$irregular_richness_id_column != "") {
+            richness_result <- compute_irregular_richness_from_layers(
+              loaded_shapefiles = data_store$loaded_shapefiles,
+              shapefile_info = data_store$shapefile_info,
+              bins_shape = data_store$study_area_shapefile,
+              bin_id_column = input$irregular_richness_id_column
+            )
 
-          data_store$irregular_bins_richness <- richness_result$bins_richness
-          data_store$irregular_bins_species_table <- richness_result$species_per_bin
-          data_store$irregular_bins_id_column <- richness_result$bin_id_column
-          data_store$irregular_bins_method <- method
+            if (!is.null(richness_result)) {
+              data_store$irregular_bins_richness <- richness_result$bins_richness
+              data_store$irregular_bins_species_table <- richness_result$species_per_bin
+              data_store$irregular_bins_id_column <- richness_result$bin_id_column
+              data_store$irregular_bins_method <- method
+            } else {
+              append_extrap_log("ERROR: Could not compute irregular polygon diversity")
+            }
+          } else {
+            append_extrap_log("ERROR: Study area shapefile or ID column not selected. Cannot compute irregular polygon diversity.")
+          }
 
-          matrix_result <- aggregate_regular_matrix_to_irregular_bins(
-            pres_abs = data_store$pres_abs_regular %||% data_store$pres_abs,
-            study_shape = shape_file,
-            bins_shape = bins_shape,
-            bin_col = richness_result$bin_id_column,
-            grid_res = grid_res
-          )
+          if (!is.null(richness_result)) {
+            matrix_result <- aggregate_regular_matrix_to_irregular_bins(
+              pres_abs = data_store$pres_abs_regular %||% data_store$pres_abs,
+              study_shape = shape_file,
+              bins_shape = data_store$study_area_shapefile,
+              bin_col = richness_result$bin_id_column,
+              grid_res = grid_res
+            )
+          } else {
+            matrix_result <- NULL
+          }
 
-          data_store$pres_abs <- matrix_result$pres_abs
-          data_store$pres_abs_irregular <- matrix_result$pres_abs
-          data_store$geometry <- matrix_result$geometry
-          data_store$irregular_bins_richness <- matrix_result$bins_richness
-          data_store$irregular_bins_species_table <- matrix_result$species_per_bin
-          data_store$irregular_bins_bin_id_mapping <- matrix_result$bin_id_mapping
-          data_store$irregular_bins_id_column <- matrix_result$bin_id_column
-          data_store$irregular_bins_method <- paste0(method, "_matrix_aggregated_to_irregular")
-          data_store$matrix_is_irregular_aggregated <- TRUE
+          if (!is.null(matrix_result)) {
+            data_store$pres_abs <- matrix_result$pres_abs
+            data_store$pres_abs_irregular <- matrix_result$pres_abs
+            data_store$geometry <- matrix_result$geometry
+            data_store$irregular_bins_richness <- matrix_result$bins_richness
+            data_store$irregular_bins_species_table <- matrix_result$species_per_bin
+            data_store$irregular_bins_bin_id_mapping <- matrix_result$bin_id_mapping
+            data_store$irregular_bins_id_column <- matrix_result$bin_id_column
+            data_store$irregular_bins_method <- paste0(method, "_matrix_aggregated_to_irregular")
+            data_store$matrix_is_irregular_aggregated <- TRUE
+          }
 
           append_extrap_log(
             paste0("Presence-absence matrix aggregated from regular grid to irregular polygons (", data_store$irregular_bins_id_column, ").")
