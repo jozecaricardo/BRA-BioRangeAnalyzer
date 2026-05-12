@@ -3467,6 +3467,11 @@ function(input, output, session) {
     })
   })
 
+  observeEvent(input$refresh_distribution_map, {
+    # Invalidate the distribution map to force re-render
+    shiny::invalidateLater(0)
+  })
+
   observeEvent(input$viz_overlay_all_methods, {
     tryCatch({
       overlay_all_methods <- isTRUE(input$viz_overlay_all_methods)
@@ -4151,6 +4156,13 @@ function(input, output, session) {
     }
     
     m
+  })
+
+  # Reactivate map when polygon opacity slider changes
+  observe({
+    polygon_opacity_debounced()
+    leaflet::leafletProxy("distribution_map") %>%
+      leaflet::clearGroup("refresh_trigger")
   })
 
   output$irregular_bins_map <- leaflet::renderLeaflet({

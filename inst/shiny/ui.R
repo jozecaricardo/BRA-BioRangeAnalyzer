@@ -698,6 +698,7 @@ shinyUI(
                 ),
                 checkboxInput("viz_overlay_all_methods", "Overlay layers from all extrapolation methods", value = FALSE),
                 actionButton("load_polygons", "Reload output layers", class = "btn btn-default btn-sm"),
+                actionButton("refresh_distribution_map", "Refresh Map", class = "btn btn-info btn-sm", icon = icon("sync")),
                 actionButton("clear_visual_outputs", "Clear Output Layers", class = "btn btn-warning btn-sm"),
                 br(),
                 p("Colors are automatically assigned by species/layer and applied immediately after extrapolation.", style = "font-size: 12px; color: #666;"),
@@ -717,13 +718,6 @@ shinyUI(
             ),
            
             tabPanel(
-              "Phylogenetic Tree",
-            br(),
-            h4("Your Phylogenetic Tree"),
-            plotOutput("phylo_tree_plot", height = "600px")
-          ),
-          
-          tabPanel(
             "Ancestral Ranges",
             br(),
             h4("Ancestral Ranges"),
