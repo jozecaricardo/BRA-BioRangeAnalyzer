@@ -1960,7 +1960,8 @@ function(input, output, session) {
   compute_irregular_richness_from_layers <- function(loaded_shapefiles,
                                                      shapefile_info,
                                                      bins_shape,
-                                                     bin_id_column = NULL) {
+                                                     bin_id_column = NULL,
+                                                     occ_data = NULL) {
     if (is.null(loaded_shapefiles) || length(loaded_shapefiles) == 0) {
       stop("No extrapolated layers available for irregular-polygon richness.")
     }
@@ -2017,6 +2018,18 @@ function(input, output, session) {
     }
 
     species_sf <- do.call(rbind, species_layers)
+    
+    # Also include occurrence points if available
+    if (!is.null(occ_data) && nrow(occ_data) > 0 && all(c("spp", "long", "lat") %in% names(occ_data))) {
+      occ_points <- sf::st_as_sf(
+        occ_data,
+        coords = c("long", "lat"),
+        crs = sf::st_crs(bins_sf)
+      )
+      occ_points$species_id <- as.character(occ_points$spp)
+      occ_sf <- occ_points[, c("species_id", "geometry")]
+      species_sf <- rbind(species_sf, occ_sf)
+    }
 
     # Spatial intersection assignment analogous to st_join(pot_sf, morrone_sf)
     bins_joined <- sf::st_join(
@@ -3273,7 +3286,8 @@ function(input, output, session) {
               loaded_shapefiles = data_store$loaded_shapefiles,
               shapefile_info = data_store$shapefile_info,
               bins_shape = data_store$study_area_shapefile,
-              bin_id_column = input$irregular_richness_id_column
+              bin_id_column = input$irregular_richness_id_column,
+              occ_data = data_store$occurrence
             )
 
             if (!is.null(richness_result)) {
