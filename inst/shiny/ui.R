@@ -627,60 +627,7 @@ shinyUI(
           p("After running BioGeoBEARS (Step 7), choose a fitted model below to visualize ancestral states.", style = "font-size: 12px; color: #666;")
         ),
         selectInput("bgb_visual_model", "BioGeoBEARS model for visualization:", choices = c("(Run BioGeoBEARS first)" = ""), selected = ""),
-        fluidRow(
-          column(6,
-            sliderInput(
-              "ancestral_ranges_label_offset",
-              "Ancestral ranges label offset:",
-              min = 0,
-              max = 1,
-              value = 0.35,
-              step = 0.05
-            ),
-            sliderInput(
-              "ancestral_ranges_tip_cex_app",
-              "Ancestral ranges (app) - terminal label size:",
-              min = 0.3,
-              max = 2,
-              value = 0.95,
-              step = 0.05
-            ),
-            sliderInput(
-              "range_uncertainty_label_offset",
-              "Range uncertainty label offset:",
-              min = 0,
-              max = 1,
-              value = 0.2,
-              step = 0.05
-            )
-          ),
-          column(6,
-            sliderInput(
-              "ancestral_ranges_state_cex_app",
-              "Ancestral ranges (app) - node range-box size:",
-              min = 0.3,
-              max = 2,
-              value = 1.0,
-              step = 0.05
-            ),
-            sliderInput(
-              "range_uncertainty_tip_cex_app",
-              "Range uncertainty (app) - terminal label size:",
-              min = 0.3,
-              max = 2,
-              value = 0.95,
-              step = 0.05
-            ),
-            sliderInput(
-              "range_uncertainty_state_cex_app",
-              "Range uncertainty (app) - pie size:",
-              min = 0.3,
-              max = 2,
-              value = 1.0,
-              step = 0.05
-            )
-          )
-        ),
+
         downloadButton("download_bgb_ancestral_pdf", "Download ancestral ranges + uncertainty (PDF)", class = "btn btn-success btn-sm"),
         br(), br(),
         
@@ -728,6 +675,29 @@ shinyUI(
             br(),
             h4("Ancestral Ranges"),
             p("Most likely ancestral ranges at each node (text labels)."),
+            fluidRow(
+              column(4,
+                sliderInput(
+                  "ancestral_ranges_label_offset",
+                  "Terminal label offset:",
+                  min = 0, max = 1, value = 0.35, step = 0.05
+                )
+              ),
+              column(4,
+                sliderInput(
+                  "ancestral_ranges_tip_cex_app",
+                  "Terminal label size:",
+                  min = 0.3, max = 2, value = 0.95, step = 0.05
+                )
+              ),
+              column(4,
+                sliderInput(
+                  "ancestral_ranges_state_cex_app",
+                  "Node range-box size:",
+                  min = 0.3, max = 2, value = 1.0, step = 0.05
+                )
+              )
+            ),
             plotOutput("ancestral_ranges_plot", height = "650px"),
             br(),
             verbatimTextOutput("ancestral_ranges_status")
@@ -738,6 +708,36 @@ shinyUI(
             br(),
             h4("Range Uncertainty"),
             p("Node-level uncertainty as pie charts of ancestral-range probabilities."),
+            fluidRow(
+              column(3,
+                sliderInput(
+                  "range_uncertainty_label_offset",
+                  "Terminal label offset:",
+                  min = 0, max = 1, value = 0.2, step = 0.05
+                )
+              ),
+              column(3,
+                sliderInput(
+                  "range_uncertainty_tip_cex_app",
+                  "Terminal label size:",
+                  min = 0.3, max = 2, value = 0.95, step = 0.05
+                )
+              ),
+              column(3,
+                sliderInput(
+                  "range_uncertainty_state_cex_app",
+                  "Pie size:",
+                  min = 0.3, max = 2, value = 1.0, step = 0.05
+                )
+              ),
+              column(3,
+                sliderInput(
+                  "range_uncertainty_terminal_range_boxes_size",
+                  "Terminal range-box size:",
+                  min = 0.3, max = 2, value = 0.8, step = 0.05
+                )
+              )
+            ),
             plotOutput("range_uncertainty_plot", height = "650px"),
             br(),
             verbatimTextOutput("range_uncertainty_status")
