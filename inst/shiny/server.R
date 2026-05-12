@@ -3306,8 +3306,17 @@ function(input, output, session) {
 
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
           if (!is.null(data_store$study_area_shapefile) && !is.null(input$irregular_richness_id_column) && input$irregular_richness_id_column != "") {
+            # DEBUG: Check occurrence data
+            cat('[DEBUG] occ rows:', nrow(data_store$occurrence), '\n')
+            cat('[DEBUG] occ taxa:', length(unique(data_store$occurrence$spp)), '\n')
+            
+            # Filter loaded_shapefiles to only include species in occ_data
+            valid_species <- unique(data_store$occurrence$spp)
+            filtered_shapefiles <- data_store$loaded_shapefiles[names(data_store$loaded_shapefiles) %in% valid_species]
+            cat('[DEBUG] filtered shapefiles count:', length(filtered_shapefiles), '\n')
+            
             richness_result <- compute_irregular_richness_from_layers(
-              loaded_shapefiles = data_store$loaded_shapefiles,
+              loaded_shapefiles = filtered_shapefiles,
               shapefile_info = data_store$shapefile_info,
               bins_shape = data_store$study_area_shapefile,
               bin_id_column = input$irregular_richness_id_column,
