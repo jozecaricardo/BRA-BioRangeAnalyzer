@@ -1600,8 +1600,17 @@ function(input, output, session) {
     } else {
       tryCatch({
         occ_data <- data_store$occurrence
+        
+        # DEBUG: Print what we have
+        cat("[Remove Duplicates] BEFORE: columns = ", paste(names(occ_data), collapse = ", "), "\n")
+        cat("[Remove Duplicates] BEFORE: rows = ", nrow(occ_data), "\n")
+        cat("[Remove Duplicates] BEFORE: class = ", class(occ_data), "\n\n")
+        
         # Check for duplicates - must have spp, long, lat columns
         if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
+          cat("[Remove Duplicates] ERROR: Missing columns!\n")
+          cat("[Remove Duplicates] Expected: spp, long, lat\n")
+          cat("[Remove Duplicates] Got: ", paste(names(occ_data), collapse = ", "), "\n\n")
           stop("Occurrence data must include columns spp, long and lat.")
         }
         
@@ -2535,7 +2544,7 @@ function(input, output, session) {
   })
 
   # Handle shapefile upload
-  observeEvent(input$study_area_shapefile, {
+  observeEvent(input$load_shapefile, {
     tryCatch({
       if (is.null(input$study_area_shapefile) || nrow(input$study_area_shapefile) == 0) {
         output$shapefile_status <- renderPrint({
