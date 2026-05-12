@@ -3312,8 +3312,32 @@ function(input, output, session) {
             
             # Filter loaded_shapefiles to only include species in occ_data
             valid_species <- unique(data_store$occurrence$spp)
-            filtered_shapefiles <- data_store$loaded_shapefiles[names(data_store$loaded_shapefiles) %in% valid_species]
+            cat('[DEBUG] valid_species:', paste(valid_species, collapse=', '), '\n')
+            cat('[DEBUG] loaded_shapefiles names:', paste(names(data_store$loaded_shapefiles), collapse=', '), '\n')
+            
+            # Extract species name from shapefile names (e.g., "MST_mst_Belostoma_estevezae" -> "Belostoma_estevezae")
+            extract_species_from_name <- function(name) {
+              # Try to extract the species name after the last underscore pattern
+              # Format is typically: "METHOD_method_SpeciesName" or "Grid Type_GRIDS_..."
+              parts <- strsplit(name, '_')[[1]]
+              # For MST/Buffer/MCP: format is "METHOD_method_Species_name"
+              # For Grid: format is "Grid Type_GRIDS_..."
+              if (length(parts) > 2) {
+                # Join all parts after the second one (skip METHOD and method/GRIDS)
+                species <- paste(parts[3:length(parts)], collapse='_')
+                return(species)
+              }
+              return(name)
+            }
+            
+            shapefile_species <- sapply(names(data_store$loaded_shapefiles), extract_species_from_name)
+            cat('[DEBUG] shapefile_species extracted:', paste(unique(shapefile_species), collapse=', '), '\n')
+            
+            # Keep only shapefiles whose species are in valid_species
+            keep_idx <- shapefile_species %in% valid_species
+            filtered_shapefiles <- data_store$loaded_shapefiles[keep_idx]
             cat('[DEBUG] filtered shapefiles count:', length(filtered_shapefiles), '\n')
+            cat('[DEBUG] filtered shapefiles names:', paste(names(filtered_shapefiles), collapse=', '), '\n')
             
             richness_result <- compute_irregular_richness_from_layers(
               loaded_shapefiles = filtered_shapefiles,
