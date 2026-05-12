@@ -3936,6 +3936,7 @@ function(input, output, session) {
                   data = shp_sf[poly_idx, , drop = FALSE],
                   color = if (is_grid_layer) "#2b2b2b" else species_color,
                   weight = if (is_grid_layer) 0.8 else 1,
+                  opacity = if (is_grid_layer) opacity else 1,
                   fillColor = if (is_grid_layer) "#FFFFFF" else species_color,
                   fillOpacity = if (is_grid_layer) 0 else opacity,
                   popup = if (is_grid_layer) paste("Grid layer:", base_name) else paste("Species:", species_name),
@@ -3993,6 +3994,7 @@ function(input, output, session) {
                     data = extracted_poly,
                     color = if (is_grid_layer) "#2b2b2b" else species_color,
                     weight = if (is_grid_layer) 0.8 else 1,
+                    opacity = if (is_grid_layer) opacity else 1,
                     fillColor = if (is_grid_layer) "#FFFFFF" else species_color,
                     fillOpacity = if (is_grid_layer) 0 else opacity,
                     popup = if (is_grid_layer) paste("Grid layer:", base_name) else paste("Species:", species_name),
@@ -4158,12 +4160,7 @@ function(input, output, session) {
     m
   })
 
-  # Reactivate map when polygon opacity slider changes
-  observe({
-    polygon_opacity_debounced()
-    leaflet::leafletProxy("distribution_map") %>%
-      leaflet::clearGroup("refresh_trigger")
-  })
+  # Trigger re-render when opacity changes by calling it in renderLeaflet
 
   output$irregular_bins_map <- leaflet::renderLeaflet({
     req(!is.null(data_store$irregular_bins_richness))
