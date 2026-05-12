@@ -3313,13 +3313,15 @@ function(input, output, session) {
           }
 
           append_extrap_log(
-            paste0("Presence-absence matrix aggregated from regular grid to irregular polygons (", data_store$irregular_bins_id_column, ").")
+            paste0("Presence-absence matrix aggregated from regular grid to irregular polygons (", data_store$irregular_bins_id_column, ").")  
           )
 
-          data_store$secondary_study_areas <- c(
-            data_store$secondary_study_areas,
-            list("Irregular Polygons (Diversity)" = bins_shape)
-          )
+          if (!is.null(matrix_result)) {
+            data_store$secondary_study_areas <- c(
+              data_store$secondary_study_areas,
+              list("Irregular Polygons (Diversity)" = data_store$study_area_shapefile)
+            )
+          }
         }
         
         output$extrap_status <- renderPrint({
