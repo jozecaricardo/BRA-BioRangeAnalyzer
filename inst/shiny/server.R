@@ -3731,7 +3731,7 @@ function(input, output, session) {
             color = "black",
             weight = 2,
             fillColor = "lightblue",
-            fillOpacity = 0.3,
+            fillOpacity = poly_opacity,
             popup = "Study Area",
             options = leaflet::pathOptions(pane = "range-polygons"),
             group = "Study Area"
@@ -3799,7 +3799,7 @@ function(input, output, session) {
         color = "#1f9e89",
         weight = 1,
         fillColor = "#1f9e89",
-        fillOpacity = 0.15,
+        fillOpacity = poly_opacity,
         popup = ~paste0(extrap_grid_label, " occupied grid cell: ", grid_id),
         options = leaflet::pathOptions(pane = "range-polygons"),
         group = grid_group_presence_extrap
@@ -3811,7 +3811,7 @@ function(input, output, session) {
         color = "#1f9e89",
         weight = 1,
         fillColor = "#1f9e89",
-        fillOpacity = 0.15,
+        fillOpacity = poly_opacity,
         popup = ~paste("Occupied grid cell:", grid_id),
         options = leaflet::pathOptions(pane = "range-polygons"),
         group = grid_group_presence
@@ -3825,7 +3825,7 @@ function(input, output, session) {
         color = "#355C7D",
         weight = 1,
         fillColor = "#355C7D",
-        fillOpacity = 0.10,
+        fillOpacity = poly_opacity,
         popup = ~paste("Occurrence-point occupied grid cell:", grid_id),
         options = leaflet::pathOptions(pane = "range-polygons"),
         group = grid_group_presence_points
@@ -3852,7 +3852,7 @@ function(input, output, session) {
           color = tx_col,
           weight = 1,
           fillColor = tx_col,
-          fillOpacity = 0.2,
+          fillOpacity = poly_opacity,
           popup = ~paste0("Taxon: ", tx, "<br>Occupied grid cell: ", grid_id),
           options = leaflet::pathOptions(pane = "range-polygons"),
           group = tx_group
@@ -3875,7 +3875,7 @@ function(input, output, session) {
           color = tx_col,
           weight = 1,
           fillColor = tx_col,
-          fillOpacity = 0.12,
+          fillOpacity = poly_opacity,
           popup = ~paste0("Taxon: ", tx, "<br>Occurrence-point grid cell: ", grid_id),
           options = leaflet::pathOptions(pane = "range-polygons"),
           group = tx_group
@@ -4131,7 +4131,7 @@ function(input, output, session) {
             color = "black",
             weight = 1,
             fillColor = sp_color,
-            fillOpacity = 0.8,
+            fillOpacity = poly_opacity,
             popup = ~paste("Species:", spp),
             options = leaflet::pathOptions(pane = "occurrence-points"),
             group = point_group
@@ -4186,7 +4186,7 @@ function(input, output, session) {
       leaflet::addProviderTiles("CartoDB.Positron") %>%
       leaflet::addPolygons(
         fillColor = ~pal(n_species),
-        fillOpacity = 0.8,
+        fillOpacity = poly_opacity,
         color = "#333333",
         weight = 1,
         popup = ~paste0(
