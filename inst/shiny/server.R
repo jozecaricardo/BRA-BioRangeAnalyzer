@@ -3227,8 +3227,11 @@ function(input, output, session) {
         data_store$study_area <- shape_file
         
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
-          if (is.null(input$irregular_richness_shapefile) || nrow(input$irregular_richness_shapefile) == 0) {
-            stop("To compute diversity by irregular polygons, upload the SECOND subdivision shapefile (.shp, .shx, .dbf).")
+          if (is.null(data_store$study_area_shapefile)) {
+            stop("To compute diversity by irregular polygons, please load the study area shapefile in Step 1.")
+          }
+          if (is.null(input$irregular_richness_id_column) || input$irregular_richness_id_column == "") {
+            stop("To compute diversity by irregular polygons, please select a Subdivision ID column from your shapefile.")
           }
         }
 
