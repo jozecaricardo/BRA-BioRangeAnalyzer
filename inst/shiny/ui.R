@@ -139,7 +139,7 @@ shinyUI(
           class = "row",
           div(
             class = "col-md-6",
-            h4("Occurrence Data"),
+            h4("Occurrence Data", tags$span("(Required)", style = "color: red; font-weight: bold;")),
             div(
               class = "guidance-text",
               p(strong("Required CSV/TXT Format:")),
@@ -159,7 +159,7 @@ shinyUI(
           ),
           div(
             class = "col-md-6",
-            h4("Phylogenetic Tree"),
+            h4("Phylogenetic Tree", tags$span("(Optional)", style = "color: green; font-weight: bold;")),
             p("Newick or Nexus format file"),
             fileInput("tree_file", "Choose tree file:", accept = c(".nwk", ".newick", ".nex", ".nexus", ".txt", ".tre")),
             actionButton("load_tree", "Load Tree", class = "btn btn-primary"),
@@ -172,7 +172,7 @@ shinyUI(
           style = "margin-top: 30px;",
           div(
             class = "col-md-12",
-            h4("Study Area Shapefile (Required)"),
+            h4("Study Area Shapefile", tags$span("(Required)", style = "color: red; font-weight: bold;")),
             div(
               class = "guidance-text",
               p(strong("Use this shapefile to:")),
@@ -229,6 +229,15 @@ shinyUI(
             verbatimTextOutput("tree_validation_output")
           )
         ),
+        br(),
+        h4("Search Taxon in Tree"),
+        p("Find a taxon and discover which clade (internal node) it belongs to:"),
+        div(
+          style = "display: flex; gap: 10px; margin-bottom: 15px;",
+          selectizeInput("search_taxon", "Select taxon:", choices = NULL, multiple = FALSE, width = "300px"),
+          actionButton("search_taxon_btn", "Find in Tree", class = "btn btn-info", style = "margin-top: 25px;")
+        ),
+        verbatimTextOutput("taxon_search_result"),
         br(),
         h4("Tree Visualization"),
         div(
@@ -290,7 +299,7 @@ shinyUI(
           class = "row",
           div(
             class = "col-md-12",
-            h4("Problematic Taxa Detection"),
+            h4("Potentially Problematic Taxa Detection"),
             p("The following taxa may cause problems in range extrapolation:"),
             tags$ul(
               tags$li("Singletons: Taxa with only 1 occurrence point"),
@@ -365,6 +374,41 @@ shinyUI(
             downloadButton("download_pruned_tree", "Download Pruned Tree", class = "btn btn-success btn-sm")
           )
         )
+      )
+    ),
+    
+    # Tab 4.5: Processed Tree
+    tabPanel(
+      "Processed Tree",
+      icon = icon("sitemap"),
+      div(
+        class = "container-fluid",
+        style = "padding: 20px;",
+        div(
+          class = "step-title",
+          "Step 3b: Processed Tree"
+        ),
+        div(
+          class = "guidance-text",
+          p("View the phylogenetic tree after data preprocessing (taxa removal, harmonization).")
+        ),
+        br(),
+        h4("Search Taxon in Processed Tree"),
+        p("Find a taxon and discover which clade (internal node) it belongs to:"),
+        div(
+          style = "display: flex; gap: 10px; margin-bottom: 15px;",
+          selectizeInput("search_taxon_processed", "Select taxon:", choices = NULL, multiple = FALSE, width = "300px"),
+          actionButton("search_taxon_btn_processed", "Find in Tree", class = "btn btn-info", style = "margin-top: 25px;")
+        ),
+        verbatimTextOutput("taxon_search_result_processed"),
+        br(),
+        h4("Processed Tree Visualization"),
+        div(
+          style = "margin-bottom: 10px;",
+          checkboxInput("show_node_labels_processed", "Show internal node numbers", value = TRUE),
+          p("Tip: Uncheck to reduce visual clutter. Zoom with mouse wheel, pan with click+drag, hover to see node IDs.", style = "font-size: 11px; color: #666; margin-top: 5px;")
+        ),
+        ggiraph::girafeOutput("tree_plot_processed", height = "650px")
       )
     ),
     
@@ -623,13 +667,8 @@ shinyUI(
         ),
         div(
           class = "guidance-text",
-          p("View maps of species distributions and phylogenetic trees with ancestral ranges."),
-          p("After running BioGeoBEARS (Step 7), choose a fitted model below to visualize ancestral states.", style = "font-size: 12px; color: #666;")
+          p("View maps of species distributions and diversity by irregular polygons.")
         ),
-        selectInput("bgb_visual_model", "BioGeoBEARS model for visualization:", choices = c("(Run BioGeoBEARS first)" = ""), selected = ""),
-
-        downloadButton("download_bgb_ancestral_pdf", "Download ancestral ranges + uncertainty (PDF)", class = "btn btn-success btn-sm"),
-        br(), br(),
         
         tabsetPanel(
             tabPanel(
@@ -651,7 +690,6 @@ shinyUI(
                 ),
                 checkboxInput("viz_overlay_all_methods", "Overlay layers from all extrapolation methods", value = FALSE),
                 actionButton("load_polygons", "Reload output layers", class = "btn btn-default btn-sm"),
-                actionButton("refresh_distribution_map", "Refresh Map", class = "btn btn-info btn-sm", icon = icon("sync")),
                 actionButton("clear_visual_outputs", "Clear Output Layers", class = "btn btn-warning btn-sm"),
                 br(),
                 p("Colors are automatically assigned by species/layer and applied immediately after extrapolation.", style = "font-size: 12px; color: #666;"),
@@ -667,81 +705,14 @@ shinyUI(
               p("How to use this panel: In Step 1, load your study area shapefile. In Step 3, select Buffer/Convex Hull/MST, enable 'Compute diversity by irregular polygons', choose the subdivision ID column from your shapefile, then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, choose ID column, and run once."),
               leaflet::leafletOutput("irregular_bins_map", height = "500px"),
               br(),
+              fluidRow(
+                column(12,
+                  downloadButton("download_irregular_bins_table", "Download Table as CSV")
+                )
+              ),
+              br(),
               DT::dataTableOutput("irregular_bins_table")
-            ),
-           
-            tabPanel(
-            "Ancestral Ranges",
-            br(),
-            h4("Ancestral Ranges"),
-            p("Most likely ancestral ranges at each node (text labels)."),
-            fluidRow(
-              column(4,
-                sliderInput(
-                  "ancestral_ranges_label_offset",
-                  "Terminal label offset:",
-                  min = 0, max = 1, value = 0.35, step = 0.05
-                )
-              ),
-              column(4,
-                sliderInput(
-                  "ancestral_ranges_tip_cex_app",
-                  "Terminal label size:",
-                  min = 0.3, max = 2, value = 0.95, step = 0.05
-                )
-              ),
-              column(4,
-                sliderInput(
-                  "ancestral_ranges_state_cex_app",
-                  "Node range-box size:",
-                  min = 0.3, max = 2, value = 1.0, step = 0.05
-                )
-              )
-            ),
-            plotOutput("ancestral_ranges_plot", height = "650px"),
-            br(),
-            verbatimTextOutput("ancestral_ranges_status")
-          ),
-          
-          tabPanel(
-            "Range Uncertainty",
-            br(),
-            h4("Range Uncertainty"),
-            p("Node-level uncertainty as pie charts of ancestral-range probabilities."),
-            fluidRow(
-              column(3,
-                sliderInput(
-                  "range_uncertainty_label_offset",
-                  "Terminal label offset:",
-                  min = 0, max = 1, value = 0.2, step = 0.05
-                )
-              ),
-              column(3,
-                sliderInput(
-                  "range_uncertainty_tip_cex_app",
-                  "Terminal label size:",
-                  min = 0.3, max = 2, value = 0.95, step = 0.05
-                )
-              ),
-              column(3,
-                sliderInput(
-                  "range_uncertainty_state_cex_app",
-                  "Pie size:",
-                  min = 0.3, max = 2, value = 1.0, step = 0.05
-                )
-              ),
-              column(3,
-                sliderInput(
-                  "range_uncertainty_terminal_range_boxes_size",
-                  "Terminal range-box size:",
-                  min = 0.3, max = 2, value = 0.8, step = 0.05
-                )
-              )
-            ),
-            plotOutput("range_uncertainty_plot", height = "650px"),
-            br(),
-            verbatimTextOutput("range_uncertainty_status")
-          )
+            )
         )
       )
     ),
@@ -1147,6 +1118,96 @@ shinyUI(
             ),
             br(),
             verbatimTextOutput("lrt_results")
+          )
+        )
+      )
+    ),
+    
+    # Tab 8: Visualizations - Ancestral Ranges
+    tabPanel(
+      "Ancestral Ranges Viz",
+      icon = icon("sitemap"),
+      div(
+        class = "container-fluid",
+        style = "padding: 20px;",
+        div(
+          class = "step-title",
+          "Step 8: Visualizations - Ancestral Ranges"
+        ),
+        div(
+          class = "guidance-text",
+          p("View ancestral ranges and range uncertainty from BioGeoBEARS analysis."),
+          p("After running BioGeoBEARS (Step 7), choose a fitted model below to visualize ancestral states.", style = "font-size: 12px; color: #666;")
+        ),
+        selectInput("bgb_visual_model_ancestral", "BioGeoBEARS model for visualization:", choices = c("(Run BioGeoBEARS first)" = ""), selected = ""),
+        downloadButton("download_bgb_ancestral_pdf_step8", "Download ancestral ranges + uncertainty (PDF)", class = "btn btn-success btn-sm"),
+        br(), br(),
+        
+        tabsetPanel(
+          tabPanel(
+            "Ancestral Ranges",
+            br(),
+            h4("Ancestral Ranges"),
+            p("Most likely ancestral ranges at each node (text labels)."),
+            fluidRow(
+              column(4,
+                sliderInput(
+                  "ancestral_ranges_label_offset_step8",
+                  "Terminal label offset:",
+                  min = 0, max = 1, value = 0.35, step = 0.05
+                )
+              ),
+              column(4,
+                sliderInput(
+                  "ancestral_ranges_tip_cex_app_step8",
+                  "Terminal label size:",
+                  min = 0.3, max = 2, value = 0.95, step = 0.05
+                )
+              ),
+              column(4,
+                sliderInput(
+                  "ancestral_ranges_state_cex_app_step8",
+                  "Node range-box size:",
+                  min = 0.3, max = 2, value = 1.0, step = 0.05
+                )
+              )
+            ),
+            plotOutput("ancestral_ranges_plot_step8", height = "650px"),
+            br(),
+            verbatimTextOutput("ancestral_ranges_status_step8")
+          ),
+          
+          tabPanel(
+            "Range Uncertainty",
+            br(),
+            h4("Range Uncertainty"),
+            p("Node-level uncertainty as pie charts of ancestral-range probabilities."),
+            fluidRow(
+              column(3,
+                sliderInput(
+                  "range_uncertainty_label_offset_step8",
+                  "Terminal label offset:",
+                  min = 0, max = 1, value = 0.2, step = 0.05
+                )
+              ),
+              column(3,
+                sliderInput(
+                  "range_uncertainty_tip_cex_app_step8",
+                  "Terminal label size:",
+                  min = 0.3, max = 2, value = 0.95, step = 0.05
+                )
+              ),
+              column(3,
+                sliderInput(
+                  "range_uncertainty_state_cex_app_step8",
+                  "Pie and terminal box size:",
+                  min = 0.3, max = 2, value = 1.0, step = 0.05
+                )
+              )
+            ),
+            plotOutput("range_uncertainty_plot_step8", height = "650px"),
+            br(),
+            verbatimTextOutput("range_uncertainty_status_step8")
           )
         )
       )

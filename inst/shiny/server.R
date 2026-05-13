@@ -959,7 +959,6 @@ function(input, output, session) {
       })
     } else {
       tree <- data_store$tree
-      shiny::updateCheckboxInput(session, "show_node_labels", value = TRUE)
       output$tree_validation_output <- renderPrint({
         n_tips <- ape::Ntip(tree)
         n_nodes <- tree$Nnode %||% 0
@@ -993,6 +992,237 @@ function(input, output, session) {
         }
       })
     }
+  })
+  
+  # Update search_taxon selectInput with tree tips
+  observe({
+    if (!is.null(data_store$tree)) {
+      taxa <- data_store$tree$tip.label
+      shiny::updateSelectizeInput(session, "search_taxon", choices = taxa, server = TRUE)
+    }
+  })
+  
+  # Handle taxon search
+  observeEvent(input$search_taxon_btn, {
+    if (is.null(data_store$tree) || is.null(input$search_taxon) || input$search_taxon == "") {
+      output$taxon_search_result <- renderPrint({
+        cat("Please select a taxon first.\n")
+      })
+      return()
+    }
+    
+    tree <- data_store$tree
+    taxon <- input$search_taxon
+    
+    # Find taxon in tree
+    tip_index <- which(tree$tip.label == taxon)
+    if (length(tip_index) == 0) {
+      output$taxon_search_result <- renderPrint({
+        cat("Taxon not found in tree.\n")
+      })
+      return()
+    }
+    
+    # Find the parent node
+    n_tips <- ape::Ntip(tree)
+    tip_node <- tip_index
+    
+    # Find parent edges
+    parent_edges <- tree$edge[tree$edge[, 2] == tip_node, , drop = FALSE]
+    if (nrow(parent_edges) == 0) {
+      output$taxon_search_result <- renderPrint({
+        cat("Error finding parent node.\n")
+      })
+      return()
+    }
+    
+    parent_node <- parent_edges[1, 1]
+    
+    # Count descendants of this node
+    descendants <- tree$edge[tree$edge[, 1] == parent_node, 2]
+    n_descendants <- length(descendants)
+    
+    output$taxon_search_result <- renderPrint({
+      cat("Taxon:", taxon, "\n")
+      cat("Most recent common ancestor node ID:", parent_node, "\n")
+      cat("Number of terminal taxa in this clade:", n_descendants, "\n")
+      cat("\nThis clade contains", taxon, "and its closest relatives.\n")
+    })
+  })
+  
+  # Update search_taxon_processed selectInput with tree tips
+  observe({
+    if (!is.null(data_store$tree)) {
+      taxa <- data_store$tree$tip.label
+      shiny::updateSelectizeInput(session, "search_taxon_processed", choices = taxa, server = TRUE)
+    }
+  })
+  
+  # Handle taxon search for processed tree
+  observeEvent(input$search_taxon_btn_processed, {
+    if (is.null(data_store$tree) || is.null(input$search_taxon_processed) || input$search_taxon_processed == "") {
+      output$taxon_search_result_processed <- renderPrint({
+        cat("Please select a taxon first.\n")
+      })
+      return()
+    }
+    
+    tree <- data_store$tree
+    taxon <- input$search_taxon_processed
+    
+    # Find taxon in tree
+    tip_index <- which(tree$tip.label == taxon)
+    if (length(tip_index) == 0) {
+      output$taxon_search_result_processed <- renderPrint({
+        cat("Taxon not found in tree.\n")
+      })
+      return()
+    }
+    
+    # Find the parent node
+    n_tips <- ape::Ntip(tree)
+    tip_node <- tip_index
+    
+    # Find parent edges
+    parent_edges <- tree$edge[tree$edge[, 2] == tip_node, , drop = FALSE]
+    if (nrow(parent_edges) == 0) {
+      output$taxon_search_result_processed <- renderPrint({
+        cat("Error finding parent node.\n")
+      })
+      return()
+    }
+    
+    parent_node <- parent_edges[1, 1]
+    
+    # Count descendants of this node
+    descendants <- tree$edge[tree$edge[, 1] == parent_node, 2]
+    n_descendants <- length(descendants)
+    
+    output$taxon_search_result_processed <- renderPrint({
+      cat("Taxon:", taxon, "\n")
+      cat("Most recent common ancestor node ID:", parent_node, "\n")
+      cat("Number of terminal taxa in this clade:", n_descendants, "\n")
+      cat("\nThis clade contains", taxon, "and its closest relatives.\n")
+    })
+  })
+  
+  
+  output$tree_plot_processed <- ggiraph::renderGirafe({
+    if (is.null(data_store$tree)) {
+      p <- ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No tree loaded", size = 6) +
+        ggplot2::theme_void()
+      return(ggiraph::girafe(ggobj = p, options = list(
+        ggiraph::opts_hover(css = "opacity:0.7;"),
+        ggiraph::opts_sizing(rescale = TRUE, width = 1)
+      )))
+    }
+    
+    tree <- data_store$tree
+    n_tips <- ape::Ntip(tree)
+    n_nodes <- tree$Nnode %||% 0
+    show_labels <- isTRUE(input$show_node_labels_processed)
+    
+    node_size <- if (n_tips > 200) 2 else if (n_tips > 100) 2.5 else 3
+    text_size <- if (n_tips > 200) 2.5 else if (n_tips > 100) 3 else 3.5
+    
+    p <- ggtree::ggtree(tree, layout = "rectangular", size = 0.5, color = "#1f1f1f") +
+      ggplot2::ggtitle("Processed Phylogenetic Tree (Interactive)") +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.text = ggplot2::element_blank(),
+        axis.ticks = ggplot2::element_blank(),
+        panel.grid = ggplot2::element_blank(),
+        plot.margin = ggplot2::margin(10, 10, 10, 10)
+      )
+    
+    if (show_labels && n_nodes > 0) {
+      internal_nodes <- (n_tips + 1):(n_tips + n_nodes)
+      
+      p <- p +
+        ggiraph::geom_point_interactive(
+          ggplot2::aes(
+            x = x, y = y,
+            tooltip = paste("Node ID:", node, "\nClick to see terminal taxa"),
+            data_id = node
+          ),
+          data = function(d) d[d$node %in% internal_nodes, ],
+          size = node_size,
+          color = "#a61c1c",
+          fill = "#a61c1c",
+          shape = 21,
+          stroke = 1.5,
+          hover_nearest = TRUE
+        ) +
+        ggiraph::geom_text_interactive(
+          ggplot2::aes(
+            x = x, y = y,
+            label = node,
+            tooltip = paste("Node ID:", node, "\nClick to see terminal taxa"),
+            data_id = node
+          ),
+          data = function(d) d[d$node %in% internal_nodes, ],
+          size = text_size * 0.7,
+          color = "white",
+          fontface = "bold",
+          hjust = 0.5,
+          vjust = 0.5
+        )
+    }
+    
+    ggiraph::girafe(
+      ggobj = p,
+      options = list(
+        ggiraph::opts_hover(css = "opacity:0.8; stroke-width:2px;"),
+        ggiraph::opts_selection(type = "single", css = "stroke-width:3px;"),
+        ggiraph::opts_zoom(min = 0.5, max = 5),
+        ggiraph::opts_toolbar(position = "topright"),
+        ggiraph::opts_sizing(rescale = TRUE, width = 1)
+      )
+    )
+  })
+  
+  # Handle node selection for processed tree to show terminal taxa
+  observeEvent(input$tree_plot_processed_selected, {
+    if (is.null(data_store$tree) || is.null(input$tree_plot_processed_selected) || length(input$tree_plot_processed_selected) == 0) return()
+    
+    tree <- data_store$tree
+    clicked_node <- as.numeric(input$tree_plot_processed_selected[1])
+    
+    if (is.na(clicked_node)) return()
+    
+    tryCatch({
+      # Get descendants of the clicked node
+      descendants <- ape::extract.clade(tree, clicked_node)
+      terminal_taxa <- descendants$tip.label
+      
+      # Create output for modal
+      output$node_taxa_list_processed <- renderPrint({
+        cat("Node ID:", clicked_node, "\n")
+        cat("Number of terminal taxa:", length(terminal_taxa), "\n\n")
+        cat("Terminal taxa:\n")
+        cat(paste("-", terminal_taxa, collapse = "\n"), "\n")
+      })
+      
+      # Show modal
+      shiny::showModal(shiny::modalDialog(
+        title = paste("Terminal Taxa in Node", clicked_node),
+        div(
+          verbatimTextOutput("node_taxa_list_processed"),
+          style = "max-height: 500px; overflow-y: auto; font-size: 12px;"
+        ),
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close")
+      ))
+    }, error = function(e) {
+      shiny::showModal(shiny::modalDialog(
+        title = "Error",
+        paste("Could not extract clade:", e$message),
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close")
+      ))
+    })
   })
   
   output$tree_plot <- ggiraph::renderGirafe({
@@ -1407,7 +1637,7 @@ function(input, output, session) {
         }
         
         output$problem_detection_output <- renderPrint({
-          cat("=== Problematic Taxa Detection ===\n\n")
+          cat("=== Potentially Problematic Taxa Detection ===\n\n")
           if (length(singletons) > 0) {
             cat("Singletons (1 point):\n")
             for (sp in singletons) cat("  -", sp, "\n")
@@ -1418,10 +1648,12 @@ function(input, output, session) {
             for (sp in doubletons) cat("  -", sp, "\n")
             cat("\n")
           }
+          cat("Duplicate occurrence records (same spp + long + lat):", duplicate_n, "points\n")
           if (duplicate_n > 0) {
-            cat("Duplicate occurrence records (same spp + long + lat):", duplicate_n, "\n")
             cat("Affected taxa:\n")
             for (sp in duplicate_taxa) cat("  -", sp, "\n")
+            cat("\n")
+          } else {
             cat("\n")
           }
 
@@ -1609,21 +1841,8 @@ function(input, output, session) {
       tryCatch({
         occ_data <- data_store$occurrence
         
-        # DEBUG: Print what we have
-        cat("[Remove Duplicates] BEFORE: columns = ", paste(names(occ_data), collapse = ", "), "\n")
-        cat("[Remove Duplicates] BEFORE: rows = ", nrow(occ_data), "\n")
-        cat("[Remove Duplicates] BEFORE: class = ", class(occ_data), "\n")
-        cat("[Remove Duplicates] BEFORE: str = \n")
-        str(occ_data)
-        cat("\n[Remove Duplicates] BEFORE: head = \n")
-        print(head(occ_data, 3))
-        cat("\n")
-        
         # Check for duplicates - must have spp, long, lat columns
         if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
-          cat("[Remove Duplicates] ERROR: Missing columns!\n")
-          cat("[Remove Duplicates] Expected: spp, long, lat\n")
-          cat("[Remove Duplicates] Got: ", paste(names(occ_data), collapse = ", "), "\n\n")
           stop("Occurrence data must include columns spp, long and lat.")
         }
         
@@ -2018,7 +2237,6 @@ function(input, output, session) {
     }
 
     species_sf <- do.call(rbind, species_layers)
-    
     # Also include occurrence points if available
     if (!is.null(occ_data) && nrow(occ_data) > 0 && all(c("spp", "long", "lat") %in% names(occ_data))) {
       occ_points <- sf::st_as_sf(
@@ -2063,10 +2281,11 @@ function(input, output, session) {
     
     species_per_bin <- bins_joined %>%
       sf::st_drop_geometry() %>%
+      dplyr::filter(!is.na(species_id)) %>%
       dplyr::group_by(.data[[bin_col]]) %>%
       dplyr::summarise(
-        n_species = dplyr::n_distinct(species_id, na.rm = TRUE),
-        species_list = paste(sort(unique(stats::na.omit(species_id))), collapse = ", "),
+        n_species = dplyr::n_distinct(species_id),
+        species_list = paste(sort(unique(species_id)), collapse = ", "),
         .groups = "drop"
       ) %>%
       dplyr::left_join(n_occ_per_bin, by = bin_col)
@@ -3306,88 +3525,44 @@ function(input, output, session) {
 
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
           if (!is.null(data_store$study_area_shapefile) && !is.null(input$irregular_richness_id_column) && input$irregular_richness_id_column != "") {
-            # DEBUG: Check occurrence data
-            cat('[DEBUG] occ rows:', nrow(data_store$occurrence), '\n')
-            cat('[DEBUG] occ taxa:', length(unique(data_store$occurrence$spp)), '\n')
-            
-            # Filter loaded_shapefiles to only include species in occ_data
-            valid_species <- unique(data_store$occurrence$spp)
-            cat('[DEBUG] valid_species:', paste(valid_species, collapse=', '), '\n')
-            cat('[DEBUG] loaded_shapefiles names:', paste(names(data_store$loaded_shapefiles), collapse=', '), '\n')
-            
-            # Extract species name from shapefile names (e.g., "MST_mst_Belostoma_estevezae" -> "Belostoma_estevezae")
-            extract_species_from_name <- function(name) {
-              # Try to extract the species name after the last underscore pattern
-              # Format is typically: "METHOD_method_SpeciesName" or "Grid Type_GRIDS_..."
-              parts <- strsplit(name, '_')[[1]]
-              # For MST/Buffer/MCP: format is "METHOD_method_Species_name"
-              # For Grid: format is "Grid Type_GRIDS_..."
-              if (length(parts) > 2) {
-                # Join all parts after the second one (skip METHOD and method/GRIDS)
-                species <- paste(parts[3:length(parts)], collapse='_')
-                return(species)
-              }
-              return(name)
-            }
-            
-            shapefile_species <- sapply(names(data_store$loaded_shapefiles), extract_species_from_name)
-            cat('[DEBUG] shapefile_species extracted:', paste(unique(shapefile_species), collapse=', '), '\n')
-            
-            # Keep only shapefiles whose species are in valid_species
-            keep_idx <- shapefile_species %in% valid_species
-            filtered_shapefiles <- data_store$loaded_shapefiles[keep_idx]
-            cat('[DEBUG] filtered shapefiles count:', length(filtered_shapefiles), '\n')
-            cat('[DEBUG] filtered shapefiles names:', paste(names(filtered_shapefiles), collapse=', '), '\n')
-            
-            richness_result <- compute_irregular_richness_from_layers(
-              loaded_shapefiles = filtered_shapefiles,
-              shapefile_info = data_store$shapefile_info,
-              bins_shape = data_store$study_area_shapefile,
-              bin_id_column = input$irregular_richness_id_column,
-              occ_data = data_store$occurrence
-            )
+            richness_result <- tryCatch({
+              calcRange_irregular_bins(
+                xy = data_store$occurrence,
+                bins_shapefile = data_store$study_area_shapefile,
+                bin_id_column = input$irregular_richness_id_column,
+                resol = c(1, 1),
+                crs_input = 4326,
+                output_dir = tempdir()
+              )
+            }, error = function(e) {
+              append_extrap_log(paste0("ERROR: Could not compute irregular polygon diversity: ", e$message))
+              NULL
+            })
 
             if (!is.null(richness_result)) {
               data_store$irregular_bins_richness <- richness_result$bins_richness
               data_store$irregular_bins_species_table <- richness_result$species_per_bin
-              data_store$irregular_bins_id_column <- richness_result$bin_id_column
+              data_store$irregular_bins_id_column <- input$irregular_richness_id_column
               data_store$irregular_bins_method <- method
-            } else {
-              append_extrap_log("ERROR: Could not compute irregular polygon diversity")
+              append_extrap_log("Irregular polygon diversity computed successfully.")
             }
           } else {
             append_extrap_log("ERROR: Study area shapefile or ID column not selected. Cannot compute irregular polygon diversity.")
           }
 
           if (!is.null(richness_result)) {
-            matrix_result <- aggregate_regular_matrix_to_irregular_bins(
-              pres_abs = data_store$pres_abs_regular %||% data_store$pres_abs,
-              study_shape = shape_file,
-              bins_shape = data_store$study_area_shapefile,
-              bin_col = richness_result$bin_id_column,
-              grid_res = grid_res
-            )
-          } else {
-            matrix_result <- NULL
-          }
-
-          if (!is.null(matrix_result)) {
-            data_store$pres_abs <- matrix_result$pres_abs
-            data_store$pres_abs_irregular <- matrix_result$pres_abs
-            data_store$geometry <- matrix_result$geometry
-            data_store$irregular_bins_richness <- matrix_result$bins_richness
-            data_store$irregular_bins_species_table <- matrix_result$species_per_bin
-            data_store$irregular_bins_bin_id_mapping <- matrix_result$bin_id_mapping
-            data_store$irregular_bins_id_column <- matrix_result$bin_id_column
-            data_store$irregular_bins_method <- paste0(method, "_matrix_aggregated_to_irregular")
+            data_store$pres_abs <- richness_result$pres_abs
+            data_store$pres_abs_irregular <- richness_result$pres_abs
+            data_store$geometry <- richness_result$bins_richness
+            data_store$irregular_bins_bin_id_mapping <- richness_result$bin_id_mapping
             data_store$matrix_is_irregular_aggregated <- TRUE
           }
 
           append_extrap_log(
-            paste0("Presence-absence matrix aggregated from regular grid to irregular polygons (", data_store$irregular_bins_id_column, ").")  
+            paste0("Irregular polygon diversity computed successfully.")
           )
 
-          if (!is.null(matrix_result)) {
+          if (!is.null(richness_result)) {
             data_store$secondary_study_areas <- c(
               data_store$secondary_study_areas,
               list("Irregular Polygons (Diversity)" = data_store$study_area_shapefile)
@@ -3423,7 +3598,16 @@ function(input, output, session) {
             cat("\n✓ Diversity by irregular polygons computed\n")
             cat("  Source method:", data_store$irregular_bins_method, "\n")
             cat("  Subdivision ID column:", data_store$irregular_bins_id_column, "\n")
-            cat("  Total subdivisions:", nrow(data_store$irregular_bins_richness), "\n")
+            n_valid <- nrow(data_store$irregular_bins_richness)
+            cat("  Subpolygons with valid data:", n_valid, "\n")
+            if (!is.null(data_store$study_area_shapefile)) {
+              n_total <- nrow(data_store$study_area_shapefile)
+              cat("  Total subpolygons in shapefile:", n_total, "\n")
+              if (n_total > n_valid) {
+                n_invalid <- n_total - n_valid
+                cat("  (Note:", n_invalid, "subpolygon(s) excluded due to invalid geometries)\n")
+              }
+            }
           }
           if (isTRUE(data_store$matrix_is_irregular_aggregated)) {
             cat("\n✓ Matrix areas were reduced to irregular subdivisions for downstream exports/BioGeoBEARS\n")
@@ -3541,7 +3725,14 @@ function(input, output, session) {
   observeEvent(input$refresh_distribution_map, {
     # Invalidate the distribution map to force re-render
     shiny::invalidateLater(0)
+    # Force Leaflet map to refresh by clearing and redrawing
+    leafletProxy("distribution_map") %>%
+      clearShapes() %>%
+      clearMarkers() %>%
+      clearControls()
   })
+  
+
 
   observeEvent(input$viz_overlay_all_methods, {
     tryCatch({
@@ -4258,11 +4449,50 @@ function(input, output, session) {
         title = "Species richness"
       )
   })
+  
+  # Observer to refresh the irregular_bins_map when data changes
+  observe({
+    if (!is.null(data_store$irregular_bins_richness)) {
+      bins_sf <- normalize_to_wgs84_sf(data_store$irregular_bins_richness)
+      vals <- bins_sf$n_species
+      pal <- leaflet::colorNumeric("viridis", domain = vals, na.color = "transparent")
+      
+      leaflet::leafletProxy("irregular_bins_map", data = bins_sf) %>%
+        leaflet::clearShapes() %>%
+        leaflet::clearControls() %>%
+        leaflet::addPolygons(
+          fillColor = ~pal(n_species),
+          fillOpacity = 0.6,
+          color = "#333333",
+          weight = 1,
+          popup = ~paste0(
+            "Richness (n_species): ", n_species,
+            "<br>Species: ", ifelse(is.na(species_list) | species_list == "", "none", species_list)
+          )
+        ) %>%
+        leaflet::addLegend(
+          position = "bottomright",
+          pal = pal,
+          values = vals,
+          title = "Species richness"
+        )
+    }
+  })
 
   output$irregular_bins_table <- DT::renderDataTable({
     req(!is.null(data_store$irregular_bins_species_table))
     DT::datatable(data_store$irregular_bins_species_table, options = list(pageLength = 10, scrollX = TRUE))
   })
+  
+  output$download_irregular_bins_table <- downloadHandler(
+    filename = function() {
+      paste0("irregular_polygon_diversity_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+    },
+    content = function(file) {
+      req(!is.null(data_store$irregular_bins_species_table))
+      write.csv(data_store$irregular_bins_species_table, file, row.names = FALSE)
+    }
+  )
   
   
   output$phylo_tree_plot <- renderPlot({
@@ -6636,6 +6866,7 @@ function(input, output, session) {
     viz_choices <- if (!is.null(res) && nrow(res) > 0) res$Model else c("(Run BioGeoBEARS first)" = "")
     viz_selected <- if (!is.null(res) && nrow(res) > 0) res$Model[1] else ""
     updateSelectInput(session, "bgb_visual_model", choices = viz_choices, selected = viz_selected)
+    updateSelectInput(session, "bgb_visual_model_ancestral", choices = viz_choices, selected = viz_selected)
   })
 
   output$ancestral_ranges_plot <- renderPlot({
@@ -7401,4 +7632,162 @@ function(input, output, session) {
     }
   })
 
+  # Step 8: Ancestral Ranges Visualization (mirrors Step 4 outputs)
+  # Sync model selection between Step 4 and Step 8
+  observe({
+    shiny::updateSelectInput(session, "bgb_visual_model_ancestral", selected = input$bgb_visual_model)
+  })
+  
+  output$ancestral_ranges_plot_step8 <- renderPlot({
+    req(nzchar(input$bgb_visual_model_ancestral))
+    raw <- bgb_model_results_raw()
+    inputs <- bgb_last_inputs() %||% list()
+    req(!is.null(raw), !is.null(raw[[input$bgb_visual_model_ancestral]]))
+    bgb_plot_error_text(NULL)
+    bgb_plot_diag_text(NULL)
+
+    res_obj <- raw[[input$bgb_visual_model_ancestral]]
+
+    tryCatch({
+      plot_data <- bgb_last_plot_data()
+      plot_call <- function() {
+        plot_bgb_results_safe(
+          res_obj = res_obj,
+          model_name = input$bgb_visual_model_ancestral,
+          inputs = inputs,
+          plot_data = plot_data,
+          plotwhat = "text",
+          title_suffix = "Ancestral ranges",
+          label_offset_override = input$ancestral_ranges_label_offset_step8,
+          tipcex_override = input$ancestral_ranges_tip_cex_app_step8,
+          statecex_override = input$ancestral_ranges_state_cex_app_step8
+        )
+      }
+      if (isTRUE(should_use_bgb_replay(inputs))) {
+        draw_bgb_plot_with_replay(plot_call)
+      } else {
+        plot_call()
+      }
+    }, error = function(e) {
+      bgb_plot_error_text(conditionMessage(e))
+      bgb_plot_diag_text(NULL)
+      plot.new()
+      title(main = paste0("Could not plot ancestral ranges (", input$bgb_visual_model_ancestral, ")"))
+      text(0.5, 0.5, labels = conditionMessage(e), cex = 0.9)
+    })
+  })
+
+  output$range_uncertainty_plot_step8 <- renderPlot({
+    req(nzchar(input$bgb_visual_model_ancestral))
+    raw <- bgb_model_results_raw()
+    inputs <- bgb_last_inputs() %||% list()
+    req(!is.null(raw), !is.null(raw[[input$bgb_visual_model_ancestral]]))
+    bgb_pie_error_text(NULL)
+
+    res_obj <- raw[[input$bgb_visual_model_ancestral]]
+
+    tryCatch({
+      plot_data <- bgb_last_plot_data()
+      plot_call <- function() {
+        plot_bgb_results_safe(
+          res_obj = res_obj,
+          model_name = input$bgb_visual_model_ancestral,
+          inputs = inputs,
+          plot_data = plot_data,
+          plotwhat = "pie",
+          title_suffix = "Range uncertainty",
+          label_offset_override = input$range_uncertainty_label_offset_step8,
+          tipcex_override = input$range_uncertainty_tip_cex_app_step8,
+          statecex_override = input$range_uncertainty_state_cex_app_step8
+        )
+      }
+      if (isTRUE(should_use_bgb_replay(inputs))) {
+        draw_bgb_plot_with_replay(plot_call)
+      } else {
+        plot_call()
+      }
+    }, error = function(e) {
+      bgb_pie_error_text(conditionMessage(e))
+      plot.new()
+      title(main = paste0("Could not plot uncertainty pies (", input$bgb_visual_model_ancestral, ")"))
+      text(0.5, 0.5, labels = conditionMessage(e), cex = 0.9)
+    })
+  })
+
+  output$ancestral_ranges_status_step8 <- renderText({
+    if (!nzchar(input$bgb_visual_model_ancestral %||% "")) {
+      return("Run BioGeoBEARS in Step 7 and select a model to visualize ancestral ranges.")
+    }
+    res <- bgb_model_results_table()
+    warn <- ""
+    if (!is.null(res) && "Convergence" %in% names(res)) {
+      idx <- which(res$Model == input$bgb_visual_model_ancestral)[1]
+      if (!is.na(idx) && !is.na(res$Convergence[idx]) && res$Convergence[idx] != 0) {
+        warn <- paste0(" (warning: optimizer convergence code ", res$Convergence[idx], ")")
+      }
+    }
+    err <- bgb_plot_error_text()
+    if (!is.null(err) && nzchar(err)) {
+      return(paste0("Ancestral ranges plot error: ", err))
+    }
+    paste0("Displaying ancestral ranges for model: ", input$bgb_visual_model_ancestral, warn)
+  })
+
+  output$range_uncertainty_status_step8 <- renderText({
+    if (!nzchar(input$bgb_visual_model_ancestral %||% "")) {
+      return("Run BioGeoBEARS in Step 7 and select a model to visualize uncertainty pies.")
+    }
+    err <- bgb_pie_error_text()
+    if (!is.null(err) && nzchar(err)) {
+      return(paste0("Range uncertainty plot error: ", err))
+    }
+    paste0("Displaying range uncertainty (pie charts) for model: ", input$bgb_visual_model_ancestral)
+  })
+
+  output$download_bgb_ancestral_pdf_step8 <- downloadHandler(
+    filename = function() {
+      mdl <- input$bgb_visual_model_ancestral %||% "model"
+      mdl <- gsub("[^A-Za-z0-9_]+", "_", mdl)
+      paste0("BioGeoBEARS_ancestral_", mdl, "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".pdf")
+    },
+    content = function(file) {
+      tryCatch({
+        raw <- bgb_model_results_raw()
+        inputs <- bgb_last_inputs() %||% list()
+        if (is.null(raw) || is.null(raw[[input$bgb_visual_model_ancestral]])) {
+          stop("No model results available. Run BioGeoBEARS first.")
+        }
+        res_obj <- raw[[input$bgb_visual_model_ancestral]]
+        plot_data <- bgb_last_plot_data()
+        pdf(file, width = 14, height = 10)
+        plot_bgb_results_safe(
+          res_obj = res_obj,
+          model_name = input$bgb_visual_model_ancestral,
+          inputs = inputs,
+          plot_data = plot_data,
+          plotwhat = "text",
+          title_suffix = "Ancestral ranges",
+          label_offset_override = input$ancestral_ranges_label_offset_step8,
+          tipcex_override = input$ancestral_ranges_tip_cex_app_step8,
+          statecex_override = input$ancestral_ranges_state_cex_app_step8
+        )
+        plot_bgb_results_safe(
+          res_obj = res_obj,
+          model_name = input$bgb_visual_model_ancestral,
+          inputs = inputs,
+          plot_data = plot_data,
+          plotwhat = "pie",
+          title_suffix = "Range uncertainty",
+          label_offset_override = input$range_uncertainty_label_offset_step8,
+          tipcex_override = input$range_uncertainty_tip_cex_app_step8,
+          statecex_override = input$range_uncertainty_state_cex_app_step8
+        )
+        dev.off()
+      }, error = function(e) {
+        cat("Error generating PDF:", conditionMessage(e), "\n")
+      })
+    }
+  )
+
 }
+
