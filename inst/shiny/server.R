@@ -1,5 +1,26 @@
 function(input, output, session) {
   
+  # Render dynamic extrapolation method info
+  output$extrap_method_info_ui <- renderUI({
+    if (input$extrap_method == "occurrence_only") {
+      return(
+        div(
+          style = "background-color: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #ffc107;",
+          h5("📊 New: Occurrence Points Distribution Visualization"),
+          p("After running this extrapolation, a new tab will appear in Step 4 showing:", style = "font-weight: bold; margin-bottom: 10px;"),
+          div(
+            style = "margin-left: 15px; font-size: 13px;",
+            p("🔵 ", strong("Occurrence points:"), " Raw occurrence data points colored by taxon"),
+            p("🟦 ", strong("Grid cells:"), " Predicted presence areas based on irregular polygon overlay (cells touching provinces where taxa occur)"),
+            p("🎯 ", strong("Interactive controls:"), " Toggle points/grids on/off, adjust transparency, and select individual taxa to focus on specific species")
+          ),
+          p("This visualization helps you understand how your occurrence data is being converted into spatial predictions.", style = "font-size: 12px; font-style: italic; margin-top: 10px;")
+        )
+      )
+    }
+    return(NULL)
+  })
+
   # Reactive storage for data
   data_store <- reactiveValues(
     occurrence = NULL,
@@ -8,6 +29,14 @@ function(input, output, session) {
     pres_abs = NULL,
     pres_abs_regular = NULL,
     pres_abs_irregular = NULL,
+    pres_abs_occurrence_only = NULL,
+    pres_abs_occurrence_only_grid_res = NULL,
+    pres_abs_mpc = NULL,
+    pres_abs_mpc_grid_res = NULL,
+    pres_abs_buff = NULL,
+    pres_abs_buff_grid_res = NULL,
+    pres_abs_mst = NULL,
+    pres_abs_mst_grid_res = NULL,
     geometry = NULL,
     extrap_method = NULL,
     loaded_shapefiles = list(),
@@ -45,6 +74,7 @@ function(input, output, session) {
     regular_grid_presence_extrap_by_taxon = list(),
     regular_grid_presence_extrap_label = NULL,
     regular_grid_presence_by_taxon = list(),
+    irregular_polygon_grids_by_taxon = list(),
     regular_grid_res = NULL,
     extrap_log = character(0),
     last_extrap_started_at = NULL,
@@ -285,7 +315,7 @@ function(input, output, session) {
     rbind(full_mat, ROOT = rep(0, ncol(full_mat)))
   }
 
-  write_regular_grid_layers <- function(method, grid_sf, regular_matrix, grid_res) {
+  write_regular_grid_layers <- function(method, grid_sf, regular_matrix, grid_res, per_taxon_grids = NULL) {
     if (is.null(grid_sf) || nrow(grid_sf) == 0 || is.null(regular_matrix) || !is.matrix(regular_matrix)) {
       return(invisible(NULL))
     }
@@ -354,6 +384,19 @@ function(input, output, session) {
     occupied_path <- file.path(out_dir, paste0("GRIDS_presence_", method, "_q", res_tag, ".shp"))
     safe_write_shp(occupied_grid, occupied_path, "presence")
 
+
+    # Write per-taxon shapefiles if provided
+    if (!is.null(per_taxon_grids) && is.list(per_taxon_grids) && length(per_taxon_grids) > 0) {
+      for (taxon_name in names(per_taxon_grids)) {
+        taxon_grid <- per_taxon_grids[[taxon_name]]
+        if (!is.null(taxon_grid) && nrow(taxon_grid) > 0) {
+          # Sanitize taxon name for filename
+          safe_name <- gsub("[^a-zA-Z0-9_.-]", "_", taxon_name)
+          taxon_path <- file.path(out_dir, paste0("GRIDS_taxon_", safe_name, "_", method, "_q", res_tag, ".shp"))
+          safe_write_shp(taxon_grid, taxon_path, paste0("taxon: ", taxon_name))
+        }
+      }
+    }
     invisible(NULL)
   }
 
@@ -836,6 +879,7 @@ function(input, output, session) {
                 data_store$regular_grid_presence_extrap_by_taxon <- list()
                 data_store$regular_grid_presence_extrap_label <- NULL
                 data_store$regular_grid_presence_by_taxon <- list()
+                data_store$irregular_polygon_grids_by_taxon <- list()
                 data_store$regular_grid_res <- NULL
                 data_store$last_extrap_started_at <- NULL
                 data_store$last_extrap_taxa <- character(0)
@@ -2916,8 +2960,9 @@ function(input, output, session) {
       data_store$regular_grid_presence_extrap_by_taxon <- list()
       data_store$regular_grid_presence_extrap_label <- NULL
       data_store$regular_grid_presence_by_taxon <- list()
+      data_store$irregular_polygon_grids_by_taxon <- list()
       data_store$regular_grid_res <- NULL
-      data_store$secondary_study_areas <- list()
+      data_store$last_extrap_started_at <- NULL
       data_store$visual_layers_method <- "occurrence_only"
       data_store$last_extrap_started_at <- run_started_at
       data_store$last_extrap_taxa <- unique(as.character(occ_data$spp))
@@ -3064,6 +3109,7 @@ function(input, output, session) {
         data_store$regular_grid_presence_points_by_taxon <- list()
         data_store$regular_grid_presence_extrap_by_taxon <- list()
         data_store$regular_grid_presence_by_taxon <- list()
+        data_store$irregular_polygon_grids_by_taxon <- list()
         data_store$regular_grid_res <- NULL
         
         # Check if shapefile is loaded
@@ -3197,12 +3243,16 @@ function(input, output, session) {
             )
           } else if (method == "occurrence_only") {
             if (points_use_irregular) {
-              if (is.null(input$points_irregular_bins_shapefile) || nrow(input$points_irregular_bins_shapefile) == 0) {
-                stop("Please upload the irregular polygons shapefile to build the point-based matrix.")
+              # Try to use study_area_shapefile from Step 1 first, then fall back to upload
+              if (!is.null(data_store$study_area_shapefile)) {
+                bins_shape <- data_store$study_area_shapefile
+                bins_sf <- sf::st_as_sf(bins_shape)
+              } else if (!is.null(input$points_irregular_bins_shapefile) && nrow(input$points_irregular_bins_shapefile) > 0) {
+                bins_shape <- load_shapefile_from_files(input$points_irregular_bins_shapefile)
+                bins_sf <- sf::st_as_sf(bins_shape)
+              } else {
+                stop("Please load a study area shapefile in Step 1 or upload an irregular polygons shapefile.")
               }
-
-              bins_shape <- load_shapefile_from_files(input$points_irregular_bins_shapefile)
-              bins_sf <- sf::st_as_sf(bins_shape)
               bin_col <- input$points_irregular_bin_id_column
 
               if (!is.null(bin_col) && nzchar(bin_col) && !(bin_col %in% names(bins_sf))) {
@@ -3336,12 +3386,29 @@ function(input, output, session) {
 
         data_store$pres_abs_regular <- NULL
         data_store$pres_abs_irregular <- NULL
-        if (identical(method, "occurrence_only") && points_use_irregular) {
-          data_store$pres_abs_irregular <- data_store$pres_abs
+        if (identical(method, "occurrence_only")) {
+          # Store occurrence_only matrix for both regular and irregular grids
+          data_store$pres_abs_occurrence_only <- data_store$pres_abs
+          data_store$pres_abs_occurrence_only_grid_res <- grid_res
+          if (points_use_irregular) {
+            data_store$pres_abs_irregular <- data_store$pres_abs
+          }
         } else if (identical(method, "irregular_bins")) {
           data_store$pres_abs_irregular <- data_store$pres_abs
+          data_store$pres_abs_occurrence_only <- data_store$pres_abs
+          data_store$pres_abs_occurrence_only_grid_res <- grid_res
         } else {
           data_store$pres_abs_regular <- data_store$pres_abs
+          if (identical(method, "mst")) {
+            data_store$pres_abs_mst <- data_store$pres_abs
+            data_store$pres_abs_mst_grid_res <- grid_res
+          } else if (identical(method, "mpc")) {
+            data_store$pres_abs_mpc <- data_store$pres_abs
+            data_store$pres_abs_mpc_grid_res <- grid_res
+          } else if (identical(method, "buffer")) {
+            data_store$pres_abs_buff <- data_store$pres_abs
+            data_store$pres_abs_buff_grid_res <- grid_res
+          }
         }
 
         if (identical(method, "occurrence_only") && isTRUE(points_use_grid_overlay) &&
@@ -3357,6 +3424,7 @@ function(input, output, session) {
           if (!is.null(regular_overlay) && is.list(regular_overlay) && !is.null(regular_overlay$pres_abs)) {
             data_store$pres_abs_regular <- regular_overlay$pres_abs
             append_extrap_log("Built auxiliary regular-grid matrix for occurrence points + irregular overlay workflow.")
+            # Polygon expansion will be done after align_regular_matrix_to_grid
           }
         }
 
@@ -3378,7 +3446,17 @@ function(input, output, session) {
             mst = "MST",
             "Extrapolation"
           )
-          if (!is.null(grid_sf) && nrow(grid_sf) > 0 && !is.null(data_store$pres_abs_regular)) {
+          # For occurrence_only with irregular + grid overlay, use pres_abs_regular (has the grids);
+          # For occurrence_only with regular grid only, use pres_abs_occurrence_only;
+          # For other methods, use pres_abs_regular
+          matrix_to_use <- if (identical(method, "occurrence_only") && isTRUE(points_use_grid_overlay)) {
+            data_store$pres_abs_regular  # Use grid-based matrix for irregular overlay
+          } else if (identical(method, "occurrence_only")) {
+            data_store$pres_abs_occurrence_only  # Use occurrence-only matrix for regular grid
+          } else {
+            data_store$pres_abs_regular  # Use regular matrix for other methods
+          }
+          if (!is.null(grid_sf) && nrow(grid_sf) > 0 && !is.null(matrix_to_use)) {
             geom_col <- attr(grid_sf, "sf_column")
             if (!is.null(geom_col) && nzchar(geom_col) && geom_col %in% names(grid_sf) && !identical(geom_col, "geometry")) {
               names(grid_sf)[names(grid_sf) == geom_col] <- "geometry"
@@ -3388,13 +3466,81 @@ function(input, output, session) {
               grid_sf$grid_id <- seq_len(nrow(grid_sf))
             }
             grid_sf <- grid_sf[, c("grid_id", "geometry")]
-            data_store$pres_abs_regular <- align_regular_matrix_to_grid(data_store$pres_abs_regular, grid_sf)
-            mat_no_root <- data_store$pres_abs_regular
+            matrix_to_use <- align_regular_matrix_to_grid(matrix_to_use, grid_sf)
+            if (identical(method, "occurrence_only")) {
+              data_store$pres_abs_occurrence_only <- matrix_to_use
+            } else {
+              data_store$pres_abs_regular <- matrix_to_use
+            }
+            
+            # Expand matrix to cover full irregular polygons (after alignment)
+            if (identical(method, "occurrence_only") && isTRUE(points_use_grid_overlay) && !is.null(bins_shape) && nrow(bins_shape) > 0) {
+              tryCatch({
+                current_mat <- matrix_to_use
+                if ("ROOT" %in% rownames(current_mat)) {
+                  current_mat <- current_mat[rownames(current_mat) != "ROOT", , drop = FALSE]
+                }
+                
+                # Build a spatial index: for each grid cell, find which polygon(s) it intersects
+                bins_shape_sf <- if (!inherits(bins_shape, "sf")) sf::st_as_sf(bins_shape) else bins_shape
+                grid_to_polygon_intersects <- sf::st_intersects(grid_sf, bins_shape_sf, sparse = FALSE)
+                grid_to_polygon_map <- apply(grid_to_polygon_intersects, 1, function(row) which(row))
+                
+                expanded_mat <- current_mat
+                all_grid_ids_to_add <- integer(0)
+                
+                for (tx_col in colnames(current_mat)) {
+                  occ_grid_ids <- suppressWarnings(as.integer(rownames(current_mat)[current_mat[, tx_col] > 0]))
+                  occ_grid_ids <- unique(occ_grid_ids[!is.na(occ_grid_ids)])
+                  
+                  if (length(occ_grid_ids) > 0) {
+                    grid_id_to_pos <- match(occ_grid_ids, as.integer(grid_sf$grid_id))
+                    grid_id_to_pos <- grid_id_to_pos[!is.na(grid_id_to_pos)]
+                    
+                    if (length(grid_id_to_pos) > 0) {
+                      polygons_with_tx_indices <- unique(unlist(grid_to_polygon_map[grid_id_to_pos]))
+                      
+                      if (length(polygons_with_tx_indices) > 0) {
+                        grids_touching_tx_polygons <- integer(0)
+                        for (poly_idx in polygons_with_tx_indices) {
+                          grids_for_poly <- which(sapply(grid_to_polygon_map, function(x) poly_idx %in% x))
+                          grids_touching_tx_polygons <- c(grids_touching_tx_polygons, grids_for_poly)
+                        }
+                        grids_touching_tx_polygons <- unique(grids_touching_tx_polygons)
+                        
+                        if (length(grids_touching_tx_polygons) > 0) {
+                          for (grid_idx in grids_touching_tx_polygons) {
+                            grid_id <- as.integer(grid_sf$grid_id[grid_idx])
+                            grid_id_str <- as.character(grid_id)
+                            if (!(grid_id_str %in% rownames(expanded_mat))) {
+                              new_row <- matrix(0, nrow = 1, ncol = ncol(expanded_mat), dimnames = list(grid_id_str, colnames(expanded_mat)))
+                              expanded_mat <- rbind(expanded_mat, new_row)
+                              all_grid_ids_to_add <- c(all_grid_ids_to_add, grid_id)
+                            }
+                            expanded_mat[grid_id_str, tx_col] <- 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                matrix_to_use <- expanded_mat
+                data_store$pres_abs_occurrence_only <- matrix_to_use
+                append_extrap_log(paste0("Expanded grid matrix to cover full irregular polygons. Added ", length(unique(all_grid_ids_to_add)), " new grid cells."))
+              }, error = function(e) {
+                append_extrap_log(paste0("[warning] Could not expand grid matrix for polygons: ", e$message))
+              })
+            }
+            
+            mat_no_root <- matrix_to_use
             if ("ROOT" %in% rownames(mat_no_root)) {
               mat_no_root <- mat_no_root[rownames(mat_no_root) != "ROOT", , drop = FALSE]
             }
+            append_extrap_log(paste0("Matrix dimensions: ", nrow(mat_no_root), " rows x ", ncol(mat_no_root), " cols"))
             occ_ids <- suppressWarnings(as.integer(rownames(mat_no_root)))
             occ_ids <- unique(occ_ids[!is.na(occ_ids) & rowSums(mat_no_root, na.rm = TRUE) > 0])
+            append_extrap_log(paste0("Occupied grid cells: ", length(occ_ids)))
             data_store$regular_grid_all_sf <- grid_sf
             matrix_presence_sf <- if (length(occ_ids) > 0) {
               grid_sf[grid_sf$grid_id %in% occ_ids, c("grid_id", "geometry")]
@@ -3408,10 +3554,15 @@ function(input, output, session) {
             data_store$regular_grid_presence_extrap_by_taxon <- list()
             presence_by_taxon <- list()
             taxa_cols <- colnames(mat_no_root)
+            append_extrap_log(paste0("Taxa in matrix: ", paste(taxa_cols, collapse = ", ")))
             for (tx in taxa_cols) {
               tx_hits <- suppressWarnings(as.integer(rownames(mat_no_root)[mat_no_root[, tx] > 0]))
               tx_hits <- unique(tx_hits[!is.na(tx_hits)])
-              if (length(tx_hits) == 0) next
+              if (length(tx_hits) == 0) {
+                append_extrap_log(paste0("  - ", tx, ": 0 cells"))
+                next
+              }
+              append_extrap_log(paste0("  - ", tx, ": ", length(tx_hits), " cells"))
               presence_by_taxon[[tx]] <- grid_sf[grid_sf$grid_id %in% tx_hits, c("grid_id", "geometry")]
             }
             if (method %in% extrap_methods_with_dual_grid) {
@@ -3456,14 +3607,54 @@ function(input, output, session) {
             }
             data_store$regular_grid_presence_by_taxon <- presence_by_taxon
             data_store$regular_grid_res <- grid_res
+            append_extrap_log(paste0("Per-taxon grids generated: ", length(presence_by_taxon), " taxa"))
+            
+            # Load pre-generated grids by taxon for irregular polygon overlay (occurrence_only + irregular + grid)
+            if (identical(method, "occurrence_only") && isTRUE(points_use_grid_overlay) && !is.null(bins_shape) && nrow(bins_shape) > 0) {
+              tryCatch({
+                append_extrap_log("Loading per-taxon grids for irregular polygon overlay...")
+                
+                # Load pre-generated grid shapefiles for each taxon
+                grids_by_taxon <- list()
+                
+                for (tx in taxa_cols) {
+                  # Look for shapefile: GRIDS_taxon_<taxon_name>_<method>_q<resolution>.shp
+                  grid_file_pattern <- paste0("GRIDS_taxon_", tx, "_", method, "_q", grid_res, ".shp")
+                  grid_files <- list.files(file.path(out_dir, "out_grid"), pattern = grid_file_pattern, full.names = TRUE, fixed = TRUE)
+                  
+                  if (length(grid_files) > 0) {
+                    # Load the shapefile
+                    tryCatch({
+                      grid_sf_tx <- sf::read_sf(grid_files[1])
+                      if (nrow(grid_sf_tx) > 0) {
+                        grids_by_taxon[[tx]] <- grid_sf_tx
+                        append_extrap_log(paste0("  Loaded grids for ", tx, ": ", nrow(grid_sf_tx), " cells"))
+                      }
+                    }, error = function(e) {
+                      append_extrap_log(paste0("    Warning: Could not load shapefile for ", tx, ": ", e$message))
+                    })
+                  }
+                }
+                
+                data_store$irregular_polygon_grids_by_taxon <- grids_by_taxon
+                append_extrap_log(paste0("Loaded grids for ", length(grids_by_taxon), " taxa from irregular polygon overlay."))
+
+              }, error = function(e) {
+                append_extrap_log(paste0("[warning] Could not load irregular polygon grids by taxon: ", e$message))
+              })
+            }
+            
             if (!identical(method, "occurrence_only") || !points_use_irregular) {
               data_store$pres_abs <- data_store$pres_abs_regular
             }
+            # Use the correct matrix for writing grid layers
+            matrix_for_grid_write <- if (identical(method, "occurrence_only")) data_store$pres_abs_occurrence_only else data_store$pres_abs_regular
             write_regular_grid_layers(
               method = method,
               grid_sf = grid_sf,
-              regular_matrix = data_store$pres_abs_regular,
-              grid_res = grid_res
+              regular_matrix = matrix_for_grid_write,
+              grid_res = grid_res,
+              per_taxon_grids = presence_by_taxon
             )
           }
         }
@@ -3572,6 +3763,11 @@ function(input, output, session) {
           }
         }
         
+        # Store the output directory for later access (e.g., loading grids in Step 4)
+        data_store$output_dir <- getwd()
+        data_store$regular_grid_res <- grid_res
+        data_store$method <- method
+        
         output$extrap_status <- renderPrint({
           cat("✓ Extrapolation completed!\n")
           cat("Method:", method, "\n")
@@ -3668,6 +3864,7 @@ function(input, output, session) {
     data_store$regular_grid_presence_points_by_taxon <- list()
     data_store$regular_grid_presence_extrap_by_taxon <- list()
     data_store$regular_grid_presence_by_taxon <- list()
+    data_store$irregular_polygon_grids_by_taxon <- list()
     data_store$regular_grid_res <- NULL
     distribution_visible_groups(NULL)
 
@@ -4134,6 +4331,31 @@ function(input, output, session) {
       }
     }
 
+    # Add irregular polygon grids by taxon
+    if (!is.null(data_store$irregular_polygon_grids_by_taxon) && length(data_store$irregular_polygon_grids_by_taxon) > 0) {
+      taxa_grid_names <- names(data_store$irregular_polygon_grids_by_taxon)
+      taxa_grid_colors <- get_species_color_map(taxa_grid_names)
+      for (tx in taxa_grid_names) {
+        tx_sf <- data_store$irregular_polygon_grids_by_taxon[[tx]]
+        if (is.null(tx_sf) || nrow(tx_sf) == 0) next
+        tx_col <- unname(taxa_grid_colors[tx])
+        if (is.na(tx_col) || !nzchar(tx_col)) tx_col <- "#2C7FB8"
+        tx_label <- paste0(tx, " (irregular polygon)")
+        tx_group <- paste0("Grid ", grid_res_txt, " x ", grid_res_txt, " deg - ", tx_label)
+        m <- m %>% leaflet::addPolygons(
+          data = tx_sf,
+          color = tx_col,
+          weight = 1,
+          fillColor = tx_col,
+          fillOpacity = poly_opacity,
+          popup = ~paste0("Taxon: ", tx, "<br>Polygon-based grid cell: ", grid_id),
+          options = leaflet::pathOptions(pane = "range-polygons"),
+          group = tx_group
+        )
+        overlay_groups <- c(overlay_groups, tx_group)
+      }
+    }
+
     # Add extrapolation polygons with species names and dynamic opacity
     if (!is.null(data_store$loaded_shapefiles) && length(data_store$loaded_shapefiles) > 0) {
       for (i in seq_along(data_store$loaded_shapefiles)) {
@@ -4424,7 +4646,245 @@ function(input, output, session) {
     m
   })
 
-  # Trigger re-render when opacity changes by calling it in renderLeaflet
+  # Render dynamic occurrence point taxa checkboxes
+  output$occ_point_checkboxes_ui <- renderUI({
+    if (!isTRUE(input$show_occ_points)) {
+      return(NULL)
+    }
+    
+    # Get available taxa from occurrence data
+    if (is.null(data_store$occurrence) || nrow(data_store$occurrence) == 0) {
+      return(NULL)
+    }
+    
+    occ_df <- data_store$occurrence
+    if (is.null(occ_df$spp)) {
+      return(NULL)
+    }
+    
+    taxa_occ_names <- unique(occ_df$spp)
+    taxa_occ_names <- sort(taxa_occ_names)
+    
+    if (length(taxa_occ_names) == 0) {
+      return(NULL)
+    }
+    
+    # Create checkboxes for each taxon
+    checkbox_list <- lapply(taxa_occ_names, function(tx) {
+      checkboxInput(
+        inputId = paste0("occ_taxon_", tx),
+        label = tx,
+        value = TRUE
+      )
+    })
+    
+    # Add a header
+    div(
+      style = "padding: 5px;",
+      do.call(tagList, checkbox_list)
+    )
+  })
+
+  # Render dynamic grid taxa checkboxes
+  output$taxon_checkboxes_ui <- renderUI({
+    if (!isTRUE(input$show_occ_grids)) {
+      return(NULL)
+    }
+    
+    # Get available taxa from grid files
+    out_dir <- data_store$output_dir
+    if (is.null(out_dir) || !dir.exists(file.path(out_dir, "out_grid"))) {
+      return(NULL)
+    }
+    
+    grid_dir <- file.path(out_dir, "out_grid")
+    grid_res <- data_store$regular_grid_res %||% 15
+    method <- data_store$method %||% "occurrence_only"
+    
+    grid_pattern <- paste0("GRIDS_taxon_.*_", method, "_q", grid_res, "\\.shp$")
+    grid_files <- list.files(grid_dir, pattern = grid_pattern, full.names = TRUE)
+    
+    if (length(grid_files) == 0) {
+      return(NULL)
+    }
+    
+    taxa_grid_names <- unique(gsub(paste0(".*GRIDS_taxon_(.*)_", method, "_q.*"), "\\1", grid_files))
+    taxa_grid_names <- sort(taxa_grid_names)
+    
+    # Create checkboxes for each taxon
+    checkbox_list <- lapply(taxa_grid_names, function(tx) {
+      checkboxInput(
+        inputId = paste0("taxon_", tx),
+        label = tx,
+        value = TRUE
+      )
+    })
+    
+    # Add a header
+    div(
+      style = "margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;",
+      p(strong("Select taxa to display:"), style = "margin: 0 0 10px 0;"),
+      do.call(tagList, checkbox_list)
+    )
+  })
+
+  # Render Occurrence Points Distribution map (static plot)
+  output$occurrence_distribution_map <- renderPlot({
+    # Force reactivity on checkbox inputs
+    input$show_occ_grids
+    input$show_occ_points
+    input$occ_dist_opacity
+    
+    # Set up the plot area
+    if (!is.null(data_store$study_area_shapefile)) {
+      # Plot study area as base
+      plot(data_store$study_area_shapefile, col = "gray95", border = "gray35", axes = TRUE,
+           main = "Occurrence Points Distribution by Taxon")
+    } else if (!is.null(data_store$occurrence) && nrow(data_store$occurrence) > 0) {
+      # Or use occurrence extent if no shapefile
+      plot(
+        range(data_store$occurrence$long, na.rm = TRUE),
+        range(data_store$occurrence$lat, na.rm = TRUE),
+        type = "n", xlab = "Longitude", ylab = "Latitude", axes = TRUE,
+        main = "Occurrence Points Distribution by Taxon"
+      )
+    } else {
+      plot(1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "No data available")
+      return()
+    }
+    
+    # Add grids by taxon if show_occ_grids is TRUE - load directly from shapefile
+    if (isTRUE(input$show_occ_grids)) {
+      tryCatch({
+        cat("\n=== DEBUG: Starting grid loading ===\n")
+        out_dir <- data_store$output_dir
+        cat("DEBUG: out_dir =", out_dir, "\n")
+        
+        if (!is.null(out_dir) && dir.exists(file.path(out_dir, "out_grid"))) {
+          grid_dir <- file.path(out_dir, "out_grid")
+          cat("DEBUG: grid_dir =", grid_dir, "\n")
+          cat("DEBUG: grid_dir exists =", dir.exists(grid_dir), "\n")
+          
+          grid_res <- data_store$regular_grid_res %||% 15
+          method <- data_store$method %||% "occurrence_only"
+          cat("DEBUG: grid_res =", grid_res, ", method =", method, "\n")
+          
+          # Find all grid shapefiles
+          grid_pattern <- paste0("GRIDS_taxon_.*_", method, "_q", grid_res, "\\.shp$")
+          cat("DEBUG: grid_pattern =", grid_pattern, "\n")
+          grid_files <- list.files(grid_dir, pattern = grid_pattern, full.names = TRUE)
+          cat("DEBUG: Found", length(grid_files), "grid files\n")
+          if (length(grid_files) > 0) cat("DEBUG: First file:", grid_files[1], "\n")
+          
+          if (length(grid_files) > 0) {
+            taxa_grid_names <- unique(gsub(paste0(".*GRIDS_taxon_(.*)_", method, "_q.*"), "\\1", grid_files))
+            cat("DEBUG: taxa_grid_names =", paste(taxa_grid_names, collapse = ", "), "\n")
+            taxa_grid_colors <- get_species_color_map(taxa_grid_names)
+            
+            for (tx in taxa_grid_names) {
+              # Check if this taxon is selected
+              taxon_checkbox_id <- paste0("taxon_", tx)
+              if (!isTRUE(input[[taxon_checkbox_id]])) {
+                cat("DEBUG: Skipping taxon", tx, "(not selected)\n")
+                next
+              }
+              
+              grid_file <- file.path(grid_dir, paste0("GRIDS_taxon_", tx, "_", method, "_q", grid_res, ".shp"))
+              cat("DEBUG: Processing taxon", tx, "- file:", grid_file, "\n")
+              cat("DEBUG: File exists =", file.exists(grid_file), "\n")
+              
+              if (file.exists(grid_file)) {
+                tx_sf <- sf::read_sf(grid_file)
+                cat("DEBUG: Loaded sf object with", nrow(tx_sf), "rows\n")
+                
+                if (!is.null(tx_sf) && nrow(tx_sf) > 0) {
+                  # Convert sf to Spatial for proper plotting
+                  tx_sp <- as(tx_sf, "Spatial")
+                  cat("DEBUG: Converted to Spatial\n")
+                  
+                  tx_col <- unname(taxa_grid_colors[tx])
+                  if (is.na(tx_col) || !nzchar(tx_col)) tx_col <- "#2C7FB8"
+                  cat("DEBUG: Color =", tx_col, "\n")
+                  
+                  cat("DEBUG: About to plot taxon", tx, "\n")
+                  plot(tx_sp, col = grDevices::adjustcolor(tx_col, alpha.f = input$occ_dist_opacity %||% 0.5),
+                       border = tx_col, lwd = 0.5, add = TRUE)
+                  cat("DEBUG: Plotted taxon", tx, "\n")
+                } else {
+                  cat("DEBUG: sf object is NULL or empty\n")
+                }
+              }
+            }
+          } else {
+            cat("DEBUG: No grid files found!\n")
+          }
+        } else {
+          cat("DEBUG: out_dir is NULL or out_grid doesn't exist\n")
+          cat("DEBUG: out_dir is NULL?", is.null(out_dir), "\n")
+          if (!is.null(out_dir)) cat("DEBUG: out_grid exists?", dir.exists(file.path(out_dir, "out_grid")), "\n")
+        }
+        cat("=== DEBUG: Finished grid loading ===\n\n")
+      }, error = function(e) {
+        cat("ERROR in grid loading:", e$message, "\n")
+        warning("Could not add taxon grids: ", e$message)
+      })
+    }
+    
+    # Add occurrence points by taxon if show_occ_points is TRUE
+    if (isTRUE(input$show_occ_points) && !is.null(data_store$occurrence) && nrow(data_store$occurrence) > 0) {
+      tryCatch({
+        occ_df <- data_store$occurrence
+        if (!is.null(occ_df$long) && !is.null(occ_df$lat)) {
+          taxa_names <- unique(occ_df$spp)
+          taxa_colors <- get_species_color_map(taxa_names)
+          
+          for (tx in taxa_names) {
+            # Check if this taxon is selected
+            occ_taxon_checkbox_id <- paste0("occ_taxon_", tx)
+            if (!isTRUE(input[[occ_taxon_checkbox_id]])) {
+              next
+            }
+            
+            tx_occ <- occ_df[occ_df$spp == tx, ]
+            if (nrow(tx_occ) == 0) next
+            
+            tx_col <- unname(taxa_colors[tx])
+            if (is.na(tx_col) || !nzchar(tx_col)) tx_col <- "#2C7FB8"
+            
+            # Add occurrence points
+            points(tx_occ$long, tx_occ$lat, col = tx_col, pch = 16, cex = 1.5)
+          }
+        }
+      }, error = function(e) {
+        warning("Could not add occurrence points: ", e$message)
+      })
+    }
+    
+    # Add legend for grids
+    if (isTRUE(input$show_occ_grids)) {
+      tryCatch({
+        out_dir <- data_store$output_dir
+        if (!is.null(out_dir) && dir.exists(file.path(out_dir, "out_grid"))) {
+          grid_dir <- file.path(out_dir, "out_grid")
+          grid_res <- data_store$regular_grid_res %||% 15
+          method <- data_store$method %||% "occurrence_only"
+          
+          grid_pattern <- paste0("GRIDS_taxon_.*_", method, "_q", grid_res, "\\.shp$")
+          grid_files <- list.files(grid_dir, pattern = grid_pattern, full.names = TRUE)
+          
+          if (length(grid_files) > 0) {
+            taxa_grid_names <- unique(gsub(paste0(".*GRIDS_taxon_(.*)_", method, "_q.*"), "\\1", grid_files))
+            taxa_grid_colors <- get_species_color_map(taxa_grid_names)
+            legend_cols <- unname(taxa_grid_colors[taxa_grid_names])
+            legend("topright", legend = taxa_grid_names, fill = legend_cols, border = "black", cex = 0.8)
+          }
+        }
+      }, error = function(e) {
+        # Silently fail if legend cannot be added
+      })
+    }
+  })
 
   output$irregular_bins_map <- leaflet::renderLeaflet({
     req(!is.null(data_store$irregular_bins_richness))
@@ -4513,7 +4973,9 @@ function(input, output, session) {
   
   observeEvent(input$run_pae_pce, {
     # Check if using custom data
-    use_custom <- input$pae_use_custom_data
+    # Get selected method
+    selected_method <- input$pae_method_choice %||% "mst"
+    use_custom <- (selected_method == "custom")
     
     if (use_custom) {
       # Validate custom data inputs
@@ -4523,24 +4985,47 @@ function(input, output, session) {
         })
         return()
       }
+    } else if (selected_method == "occurrence_only") {
+      # For occurrence_only, we'll generate the matrix on-the-fly using grid resolution
+      # Validate that occurrence data is loaded
+      if (is.null(data_store$occurrence)) {
+        output$pae_pce_log <- renderText({
+          "Error: No occurrence data loaded. Please load occurrence data in Step 1 first."
+        })
+        return()
+      }
+      
+      # Check if shapefile is loaded
+      if (is.null(data_store$study_area_shapefile)) {
+        output$pae_pce_log <- renderText({
+          "Error: No study area shapefile loaded. Please load a shapefile in Step 1."
+        })
+        return()
+      }
     } else {
-      # Check if MST extrapolation has been run
-        if (is.null(data_store$mst_context) || is.null(data_store$extrap_method) || data_store$extrap_method != "mst") {
-          output$pae_pce_log <- renderText({
-            "Error: PAE-PCE analysis requires a presence-absence matrix generated by the Minimum Spanning Tree (MST) method.\nPlease go to Step 3, select 'Minimum Spanning Tree' and run the extrapolation first."
-          })
-          return()
-        }
-        
-        # Check if shapefile is loaded
-        if (is.null(data_store$mst_context$shapeFile)) {
-          output$pae_pce_log <- renderText({
-            "Error: No study area shapefile loaded. Please load a shapefile in Step 3."
-          })
-          return()
-        }
+      # For MST, MPC, BUFF: check if the selected method has been run
+      method_matrix <- switch(selected_method,
+        "mst" = data_store$pres_abs_mst,
+        "mpc" = data_store$pres_abs_mpc,
+        "buffer" = data_store$pres_abs_buff,
+        NULL
+      )
+      
+      if (is.null(method_matrix)) {
+        output$pae_pce_log <- renderText({
+          paste0("Error: No presence-absence matrix available for the selected method (", selected_method, ").\nPlease go to Step 3, select the desired extrapolation method, and run it first.")
+        })
+        return()
+      }
+      
+      # Check if shapefile is loaded
+      if (is.null(data_store$mst_context$shapeFile)) {
+        output$pae_pce_log <- renderText({
+          "Error: No study area shapefile loaded. Please load a shapefile in Step 3."
+        })
+        return()
+      }
     }
-    
     # Show running status
     output$pae_pce_log <- renderText({
       "Running PAE-PCE analysis... This may take a while depending on the number of iterations and species."
@@ -4561,11 +5046,26 @@ function(input, output, session) {
         }
         shape <- rgdal::readOGR(shp_path, verbose = FALSE)
         res <- c(input$pae_custom_resol_x, input$pae_custom_resol_y)
+      } else if (selected_method == "occurrence_only") {
+        # Use occurrence_only matrix and grid resolution stored in Step 3
+        mat_raw <- data_store$pres_abs_occurrence_only
+        res <- data_store$pres_abs_occurrence_only_grid_res
+        shape <- data_store$study_area_shapefile
       } else {
-        # Use MST context data
-        mat_raw <- data_store$mst_context$preabsMat
+        # Use selected method's matrix (MST, MPC, BUFF) with stored grid resolution
+        mat_raw <- switch(selected_method,
+          "mst" = data_store$pres_abs_mst,
+          "mpc" = data_store$pres_abs_mpc,
+          "buffer" = data_store$pres_abs_buff,
+          NULL
+        )
+        res <- switch(selected_method,
+          "mst" = data_store$pres_abs_mst_grid_res,
+          "mpc" = data_store$pres_abs_mpc_grid_res,
+          "buffer" = data_store$pres_abs_buff_grid_res,
+          data_store$mst_context$resol
+        )
         shape <- data_store$mst_context$shapeFile
-        res <- data_store$mst_context$resol
       }
       n_iter <- input$pae_n_iterations
 
@@ -4590,7 +5090,7 @@ function(input, output, session) {
 
       pae_input_matrix_snapshot(list(
         matrix = mat,
-        method = data_store$extrap_method,
+        method = selected_method,
         timestamp = Sys.time(),
         n_rows_before = nrow(mat_raw),
         n_rows = nrow(mat),
@@ -4780,7 +5280,8 @@ function(input, output, session) {
     pref <- preference %||% (input$matrix_export_basis %||% "current")
 
     current_mat <- data_store$pres_abs
-    regular_mat <- data_store$pres_abs_regular
+    # For occurrence_only with regular grid, use pres_abs_occurrence_only; otherwise use pres_abs_regular
+    regular_mat <- if (!is.null(data_store$pres_abs_occurrence_only)) data_store$pres_abs_occurrence_only else data_store$pres_abs_regular
     irregular_mat <- data_store$pres_abs_irregular
 
     selected <- current_mat
@@ -5394,7 +5895,8 @@ function(input, output, session) {
   }
 
   write_geog_from_current_matrix <- function(file_path) {
-    mat <- data_store$pres_abs
+    # Try to get matrix from pres_abs_occurrence_only first (for occurrence_only method), then fall back to pres_abs
+    mat <- data_store$pres_abs_occurrence_only %||% data_store$pres_abs
     if (is.null(mat)) {
       stop("No matrix available from Step 3/5. Run an extrapolation first or upload .data file.")
     }
