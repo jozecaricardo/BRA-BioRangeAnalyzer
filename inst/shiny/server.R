@@ -3526,14 +3526,27 @@ function(input, output, session) {
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
           if (!is.null(data_store$study_area_shapefile) && !is.null(input$irregular_richness_id_column) && input$irregular_richness_id_column != "") {
             richness_result <- tryCatch({
-              calcRange_irregular_bins(
-                xy = data_store$occurrence,
-                bins_shapefile = data_store$study_area_shapefile,
-                bin_id_column = input$irregular_richness_id_column,
-                resol = c(1, 1),
-                crs_input = 4326,
-                output_dir = tempdir()
-              )
+              # Use extrapolation geometries instead of just occurrence points
+              if (!is.null(data_store$regular_grid_presence_extrap_sf) && nrow(data_store$regular_grid_presence_extrap_sf) > 0) {
+                append_extrap_log("Using extrapolation geometries for irregular polygon richness...")
+                calcRange_irregular_bins_from_extrap(
+                  extrap_sf = data_store$regular_grid_presence_extrap_sf,
+                  bins_shapefile = data_store$study_area_shapefile,
+                  bin_id_column = input$irregular_richness_id_column,
+                  crs_input = 4326
+                )
+              } else {
+                # Fallback to occurrence points if extrapolation not available
+                append_extrap_log("Extrapolation geometries not found. Using occurrence points instead...")
+                calcRange_irregular_bins(
+                  xy = data_store$occurrence,
+                  bins_shapefile = data_store$study_area_shapefile,
+                  bin_id_column = input$irregular_richness_id_column,
+                  resol = c(1, 1),
+                  crs_input = 4326,
+                  output_dir = tempdir()
+                )
+              }
             }, error = function(e) {
               append_extrap_log(paste0("ERROR: Could not compute irregular polygon diversity: ", e$message))
               NULL
