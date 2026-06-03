@@ -1,9 +1,10 @@
-#' Calculate Irregular Bins Richness from Extrapolation Geometries
+#' Calculate Irregular Bins Richness from Extrapolation Shapefiles
 #'
-#' This function calculates species richness for irregular polygons based on
-#' extrapolation geometries (Buffer, Convex Hull, MST) rather than just occurrence points.
+#' This function loads extrapolation shapefiles and calculates species richness
+#' for irregular polygons by intersecting the extrapolations with the polygons.
 #'
-#' @param extrap_sf sf object with extrapolation geometries (e.g., grid cells from Buffer/Convex Hull/MST)
+#' @param extrap_method Character indicating extrapolation method ("buffer", "convex_hull", "mst")
+#' @param output_dir Character path to the output directory containing extrapolation shapefiles
 #' @param bins_shapefile SpatVector or sf object with irregular polygons
 #' @param bin_id_column Character name of the column containing polygon IDs
 #' @param crs_input Numeric EPSG code for input CRS (default: 4326)
@@ -15,8 +16,9 @@
 #'
 #' @keywords internal
 #'
-calcRange_irregular_bins_from_extrap <- function(
-    extrap_sf,
+calcRange_irregular_bins_from_extrap_shapefiles <- function(
+    extrap_method,
+    output_dir,
     bins_shapefile,
     bin_id_column,
     crs_input = 4326) {
@@ -25,12 +27,8 @@ calcRange_irregular_bins_from_extrap <- function(
   # 1. VALIDATE INPUTS
   # ============================================================================
 
-  if (!inherits(extrap_sf, "sf")) {
-    stop("extrap_sf must be an sf object")
-  }
-
-  if (nrow(extrap_sf) == 0) {
-    stop("extrap_sf has no geometries")
+  if (!dir.exists(output_dir)) {
+    stop(paste0("Output directory not found: ", output_dir))
   }
 
   # Convert bins_shapefile to sf if needed
@@ -47,58 +45,102 @@ calcRange_irregular_bins_from_extrap <- function(
   }
 
   cat("\n")
-  cat("Calculating irregular bins richness from extrapolation geometries...\n")
+  cat("Calculating irregular bins richness from extrapolation shapefiles...\n")
   cat("=" %+% rep("=", 60) %+% "\n\n")
 
   # ============================================================================
-  # 2. ENSURE SAME CRS
+  # 2. FIND AND LOAD EXTRAPOLATION SHAPEFILES
   # ============================================================================
 
-  cat("1) Checking coordinate reference systems...\n")
+  cat("1) Finding extrapolation shapefiles...\n")
 
-  # Transform extrap_sf to match bins_sf CRS
-  if (!identical(sf::st_crs(extrap_sf), sf::st_crs(bins_sf))) {
-    cat(paste0("   - Transforming extrapolation CRS from ", sf::st_crs(extrap_sf)$input, " to ", sf::st_crs(bins_sf)$input, "\n"))
-    extrap_sf <- sf::st_transform(extrap_sf, sf::st_crs(bins_sf))
+  # Look for taxon-specific extrapolation shapefiles
+  # Pattern: GRIDS_taxon_[SPECIES]_[METHOD]_q[RES].shp or
+  #          [METHOD]_[SPECIES].shp or similar
+  pattern <- paste0(".*", toupper(extrap_method), ".*\\.shp$")
+  shapefiles <- list.files(output_dir, pattern = pattern, ignore.case = TRUE, full.names = TRUE)
+
+  if (length(shapefiles) == 0) {
+    stop(paste0("No extrapolation shapefiles found for method '", extrap_method, "' in ", output_dir))
+  }
+
+  cat(paste0("   - Found ", length(shapefiles), " extrapolation shapefile(s)\n"))
+
+  # Load all shapefiles and combine
+  all_extrap_sf <- NULL
+  species_list <- character(0)
+
+  for (shp_file in shapefiles) {
+    tryCatch({
+      extrap_sf <- sf::st_read(shp_file, quiet = TRUE)
+
+      # Extract species name from filename
+      filename <- basename(shp_file)
+      # Try to extract species from patterns like "GRIDS_taxon_[SPECIES]_" or "[SPECIES]_"
+      species_match <- regmatches(filename, regexpr("(?<=taxon_)[^_]+", filename, perl = TRUE))
+      if (length(species_match) == 0) {
+        species_match <- regmatches(filename, regexpr("^[^_]+", filename))
+      }
+      species_name <- if (length(species_match) > 0) species_match[1] else "unknown"
+
+      # Add species column if not present
+      if (!"species" %in% names(extrap_sf) && !"spp" %in% names(extrap_sf)) {
+        extrap_sf$species <- species_name
+      }
+
+      species_list <- c(species_list, species_name)
+
+      # Combine with other shapefiles
+      if (is.null(all_extrap_sf)) {
+        all_extrap_sf <- extrap_sf
+      } else {
+        # Ensure same columns
+        common_cols <- intersect(names(all_extrap_sf), names(extrap_sf))
+        if ("species" %in% common_cols || "spp" %in% common_cols) {
+          all_extrap_sf <- rbind(all_extrap_sf[, common_cols], extrap_sf[, common_cols])
+        }
+      }
+    }, error = function(e) {
+      cat(paste0("   - Warning: Could not load ", shp_file, ": ", e$message, "\n"))
+    })
+  }
+
+  if (is.null(all_extrap_sf) || nrow(all_extrap_sf) == 0) {
+    stop("Could not load any valid extrapolation shapefiles")
+  }
+
+  cat(paste0("   - Loaded ", nrow(all_extrap_sf), " geometries from ", length(unique(species_list)), " species\n\n"))
+
+  # ============================================================================
+  # 3. ENSURE SAME CRS
+  # ============================================================================
+
+  cat("2) Checking coordinate reference systems...\n")
+
+  if (!identical(sf::st_crs(all_extrap_sf), sf::st_crs(bins_sf))) {
+    cat(paste0("   - Transforming extrapolation CRS to ", sf::st_crs(bins_sf)$input, "\n"))
+    all_extrap_sf <- sf::st_transform(all_extrap_sf, sf::st_crs(bins_sf))
   }
 
   cat("   - CRS aligned\n\n")
-
-  # ============================================================================
-  # 3. EXTRACT SPECIES FROM EXTRAPOLATION GEOMETRIES
-  # ============================================================================
-
-  cat("2) Extracting species information from extrapolation geometries...\n")
-
-  # The extrap_sf should have a 'species' or 'spp' column
-  species_col <- NA
-  if ("species" %in% names(extrap_sf)) {
-    species_col <- "species"
-  } else if ("spp" %in% names(extrap_sf)) {
-    species_col <- "spp"
-  } else if ("taxon" %in% names(extrap_sf)) {
-    species_col <- "taxon"
-  } else {
-    # Try to find any column that looks like species
-    possible_cols <- names(extrap_sf)[!names(extrap_sf) %in% c("geometry", "geom")]
-    if (length(possible_cols) > 0) {
-      species_col <- possible_cols[1]
-      cat(paste0("   - Warning: Using column '", species_col, "' as species column\n"))
-    }
-  }
-
-  if (is.na(species_col)) {
-    stop("Could not find species column in extrap_sf. Expected 'species', 'spp', or 'taxon'")
-  }
-
-  all_species <- unique(extrap_sf[[species_col]])
-  cat(paste0("   - Found ", length(all_species), " species in extrapolation\n\n"))
 
   # ============================================================================
   # 4. INTERSECT EXTRAPOLATION WITH BINS
   # ============================================================================
 
   cat("3) Intersecting extrapolation with irregular polygons...\n")
+
+  # Determine species column
+  species_col <- NA
+  if ("species" %in% names(all_extrap_sf)) {
+    species_col <- "species"
+  } else if ("spp" %in% names(all_extrap_sf)) {
+    species_col <- "spp"
+  }
+
+  if (is.na(species_col)) {
+    stop("Could not find species column in extrapolation shapefiles")
+  }
 
   bins_richness_list <- list()
   species_per_bin_list <- list()
@@ -107,9 +149,9 @@ calcRange_irregular_bins_from_extrap <- function(
     bin_id <- bins_sf[[bin_id_column]][i]
     bin_geom <- bins_sf[i, ]
 
-    # Find extrapolation cells that intersect this bin
-    intersecting <- sf::st_intersects(extrap_sf, bin_geom, sparse = FALSE)[, 1]
-    species_in_bin <- unique(extrap_sf[[species_col]][intersecting])
+    # Find extrapolation geometries that intersect this bin
+    intersecting <- sf::st_intersects(all_extrap_sf, bin_geom, sparse = FALSE)[, 1]
+    species_in_bin <- unique(all_extrap_sf[[species_col]][intersecting])
     species_in_bin <- species_in_bin[!is.na(species_in_bin)]
 
     if (length(species_in_bin) > 0) {
