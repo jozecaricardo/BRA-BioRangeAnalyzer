@@ -452,7 +452,7 @@ shinyUI(
           div(
             style = "margin-left: 15px; font-size: 13px;",
             p("✅ ", strong("Occurrence points only + Regular grid"), " → Matrix generated → Can use in PAE-PCE"),
-            p("✅ ", strong("Occurrence points only + Irregular polygons + Regular grid"), " → Converts irregular polygons to grids → Matrix generated → Can use in PAE-PCE"),
+            p("✅ ", strong("Occurrence points only + Irregular polygons + Regular grid"), " → Converts occurrence points to irregular polygons + regular grids → Matrix generated → Can use in PAE-PCE/NDM"),
             p("✅ ", strong("MST, Buffer, Convex Hull"), " → Extrapolation generated → Can use in PAE-PCE"),
             p("❌ ", strong("Plot points only"), " (no extrapolation) → No matrix → Cannot use in PAE-PCE")
           )
@@ -515,19 +515,19 @@ shinyUI(
               conditionalPanel(
                 condition = "input.points_occurrence_mode == 'irregular_direct'",
                 p("Direct irregular workflow: richness is computed by counting occurrence points directly inside each polygon.", style = "font-size: 12px; color: #666;"),
-                p("In this mode, diversity by irregular polygons is computed automatically and the exported matrix basis becomes irregular polygons (direct point-in-polygon).", style = "font-size: 12px; color: #666;")
+                p("In this mode, richness by irregular polygons is computed automatically and the exported matrix basis becomes irregular polygons (direct point-in-polygon).", style = "font-size: 12px; color: #666;")
               ),
               conditionalPanel(
                 condition = "input.points_occurrence_mode == 'irregular_with_grid'",
                 p("Grid-overlap workflow: points are first assigned to regular grid cells; then species counts per polygon are computed from grid-polygon overlap.", style = "font-size: 12px; color: #666;"),
-                p("In this mode, diversity by irregular polygons is computed automatically and the exported matrix basis becomes irregular polygons (derived from grid cells).", style = "font-size: 12px; color: #666;")
+                p("In this mode, richness by irregular polygons is computed automatically and the exported matrix basis becomes irregular polygons (derived from grid cells).", style = "font-size: 12px; color: #666;")
               )
             ),
             conditionalPanel(
               condition = "input.extrap_method == 'buffer' || input.extrap_method == 'convex_hull' || input.extrap_method == 'mst'",
               tags$hr(),
-              h5("Optional: Diversity in Irregular Polygons"),
-              checkboxInput("enable_irregular_richness", "Compute diversity by irregular polygons", value = FALSE),
+              h5("Required for BioGeoBEARS: Richness by Irregular Polygons"),
+              checkboxInput("enable_irregular_richness", "Compute richness by irregular polygons", value = FALSE),
               conditionalPanel(
                 condition = "input.enable_irregular_richness == true",
                 p("Choose which column from your study area shapefile (loaded in Step 1) defines the subdivisions:"),
@@ -722,7 +722,7 @@ shinyUI(
         ),
         div(
           class = "guidance-text",
-          p("View maps of species distributions and diversity by irregular polygons.")
+          p("View maps of species distributions and richness by irregular polygons.")
         ),
         
         tabsetPanel(
@@ -755,9 +755,9 @@ shinyUI(
             ),
 
             tabPanel(
-              "Irregular Polygon Diversity",
+              "Irregular Polygon Richness",
               br(),
-              p("How to use this panel: In Step 1, load your study area shapefile. In Step 3, select Buffer/Convex Hull/MST, enable 'Compute diversity by irregular polygons', choose the subdivision ID column from your shapefile, then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, choose ID column, and run once."),
+              p("How to use this panel: In Step 1, load your study area shapefile. In Step 3, select Buffer/Convex Hull/MST, enable 'Compute richness by irregular polygons', choose the subdivision ID column from your shapefile, then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, choose ID column, and run once."),
               leaflet::leafletOutput("irregular_bins_map", height = "500px"),
               br(),
               fluidRow(

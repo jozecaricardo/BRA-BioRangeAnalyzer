@@ -3717,18 +3717,16 @@ function(input, output, session) {
         if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
           if (!is.null(data_store$study_area_shapefile) && !is.null(input$irregular_richness_id_column) && input$irregular_richness_id_column != "") {
             richness_result <- tryCatch({
-              # Load extrapolation shapefiles and intersect with irregular polygons
-              append_extrap_log("Loading extrapolation shapefiles and computing irregular polygon richness...")
-              out_dir <- data_store$output_dir %||% file.path(getwd(), paste0("out_", method))
-              calcRange_irregular_bins_from_extrap_shapefiles(
-                extrap_method = method,
-                output_dir = out_dir,
+              calcRange_irregular_bins(
+                xy = data_store$occurrence,
                 bins_shapefile = data_store$study_area_shapefile,
                 bin_id_column = input$irregular_richness_id_column,
-                crs_input = 4326
+                resol = c(1, 1),
+                crs_input = 4326,
+                output_dir = tempdir()
               )
             }, error = function(e) {
-              append_extrap_log(paste0("ERROR: Could not compute irregular polygon richness: ", e$message))
+              append_extrap_log(paste0("ERROR: Could not compute irregular polygon diversity: ", e$message))
               NULL
             })
 
