@@ -39,12 +39,15 @@ shinyUI(
           color: #ffffff !important;
         }
         /* BioGeoBEARS tabs styling - Orange color */
+        .navbar-default .navbar-nav > li > a[data-value='BioGeoBEARS Matrix Preparation'],
         .navbar-default .navbar-nav > li > a[data-value='BioGeoBEARS Setup'],
         .navbar-default .navbar-nav > li > a[data-value='Analysis & Results'],
         .navbar-default .navbar-nav > li > a[data-value='Ancestral Ranges Viz'] {
           color: #ff6b35 !important;
           font-weight: 600 !important;
         }
+        .navbar-default .navbar-nav > li > a[data-value='BioGeoBEARS Matrix Preparation']:hover,
+        .navbar-default .navbar-nav > li > a[data-value='BioGeoBEARS Matrix Preparation']:focus,
         .navbar-default .navbar-nav > li > a[data-value='BioGeoBEARS Setup']:hover,
         .navbar-default .navbar-nav > li > a[data-value='BioGeoBEARS Setup']:focus,
         .navbar-default .navbar-nav > li > a[data-value='Analysis & Results']:hover,
@@ -453,8 +456,7 @@ shinyUI(
             style = "margin-left: 15px; font-size: 13px;",
             p("✅ ", strong("Occurrence points only + Regular grid"), " → Matrix generated → Can use in PAE-PCE"),
             p("✅ ", strong("Occurrence points only + Irregular polygons + Regular grid"), " → Converts occurrence points to irregular polygons + regular grids → Matrix generated → Can use in PAE-PCE/NDM"),
-            p("✅ ", strong("MST, Buffer, Convex Hull"), " → Extrapolation generated → Can use in PAE-PCE"),
-            p("❌ ", strong("Plot points only"), " (no extrapolation) → No matrix → Cannot use in PAE-PCE")
+            p("✅ ", strong("MST, Buffer, Convex Hull"), " → Extrapolation generated → Can use in PAE-PCE")
           )
         ),
         div(
@@ -524,15 +526,15 @@ shinyUI(
               )
             ),
             conditionalPanel(
-              condition = "input.extrap_method == 'buffer' || input.extrap_method == 'convex_hull' || input.extrap_method == 'mst'",
+              condition = "input.extrap_method == 'buffer' || input.extrap_method == 'convex_hull' || input.extrap_method == 'mst' || input.extrap_method == 'occurrence_only'",
               tags$hr(),
-              h5("Required for BioGeoBEARS: Richness by Irregular Polygons"),
+              h5("Richness by Irregular Polygons"),
               checkboxInput("enable_irregular_richness", "Compute richness by irregular polygons", value = FALSE),
               conditionalPanel(
                 condition = "input.enable_irregular_richness == true",
                 p("Choose which column from your study area shapefile (loaded in Step 1) defines the subdivisions:"),
                 selectInput("irregular_richness_id_column", "Subdivision ID column (from study area shapefile):", choices = c("(No shapefile loaded)" = ""), selected = ""),
-                p("When this option is enabled, the output matrix is aggregated to these subdivisions (recommended for BioGeoBEARS).", style = "font-size: 12px; color: #666;"),
+                p("When this option is enabled, richness is computed by intersecting the extrapolation with the irregular polygons.", style = "font-size: 12px; color: #666;"),
                 p("If left empty, the app will auto-detect a suitable ID column.", style = "font-size: 12px; color: #666;")
               )
             ),
@@ -620,7 +622,7 @@ shinyUI(
                 choices = c(
                   "Occurrence points only" = "occurrence_only",
                   "Minimum Spanning Tree (MST)" = "mst",
-                  "Minimum Convex Polygon (MPC)" = "mpc",
+                  "Convex Hull" = "mpc",
                   "Buffer" = "buffer",
                   "Custom data" = "custom"
                 ),
@@ -767,77 +769,6 @@ shinyUI(
               ),
               br(),
               DT::dataTableOutput("irregular_bins_table")
-            ),
-            
-            tabPanel(
-              "Occurrence Points Distribution",
-              br(),
-              div(
-                class = "alert alert-info",
-                style = "margin: 15px;",
-                h5("About this tab", style = "margin-top: 0;"),
-                p(
-                  "This tab displays the spatial distribution of occurrence points and their extrapolated ranges based on ",
-                  strong("occurrence-only methods."),
-                  " These extrapolations use your occurrence data to generate presence predictions across geographic space."
-                ),
-                p(
-                  strong("What you see here:"),
-                  br(),
-                  "• ", strong("Colored points:"), " Individual occurrence records for each taxon",
-                  br(),
-                  "• ", strong("Colored grid cells:"), " Predicted presence areas based on irregular polygon overlay (cells touching provinces where taxa occur)",
-                  br(),
-                  "• ", strong("Grid resolution:"), " Determined by your settings in Step 3"
-                ),
-                p(
-                  strong("How to use the controls:"),
-                  br(),
-                  "• Toggle ", code("Show occurrence points"), " to display/hide raw occurrence data",
-                  br(),
-                  "• Toggle ", code("Show taxon grids"), " to display/hide extrapolated grid cells",
-                  br(),
-                  "• Adjust ", code("Grid Opacity"), " to see underlying layers",
-                  br(),
-                  "• Select individual taxa below to focus on specific species"
-                )
-              ),
-              div(
-                class = "row",
-                style = "margin-bottom: 15px;",
-                div(
-                  class = "col-md-12",
-                  h4("Map Controls"),
-                  sliderInput(
-                    "occ_dist_opacity",
-                    "Grid Opacity:",
-                    min = 0,
-                    max = 1,
-                    value = 0.5,
-                    step = 0.1
-                  ),
-                  checkboxInput("show_occ_points", "Show occurrence points", value = TRUE),
-                  checkboxInput("show_occ_grids", "Show taxon grids", value = TRUE),
-                  div(
-                    class = "row",
-                    style = "margin-top: 15px;",
-                    div(
-                      class = "col-md-6",
-                      HTML('<details open><summary style="cursor: pointer; font-weight: bold; color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 8px; user-select: none; margin-bottom: 10px;">Grid Taxa</summary>'),
-                      uiOutput("taxon_checkboxes_ui"),
-                      HTML('</details>')
-                    ),
-                    div(
-                      class = "col-md-6",
-                      HTML('<details open><summary style="cursor: pointer; font-weight: bold; color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 8px; user-select: none; margin-bottom: 10px;">Occurrence Point Taxa</summary>'),
-                      uiOutput("occ_point_checkboxes_ui"),
-                      HTML('</details>')
-                    )
-                  ),
-                  p("This map shows occurrence points and grids generated by taxon based on irregular polygon overlay.", style = "font-size: 12px; color: #666; margin-top: 15px;")
-                )
-              ),
-              plotOutput("occurrence_distribution_map", height = "500px")
             )
         )
       )
@@ -860,9 +791,6 @@ shinyUI(
           p("For compatibility, area names are abbreviated (A, B, C, ...). Download the area-code mapping after export.", style = "font-size: 12px; color: #666;")
         ),
 
-        downloadButton("download_area_code_mapping", "Download area-code mapping", class = "btn btn-info btn-sm"),
-        br(), br(),
-        verbatimTextOutput("area_code_mapping_status"),
         radioButtons(
           "matrix_export_basis",
           "Matrix basis for exports:",
@@ -876,14 +804,7 @@ shinyUI(
         verbatimTextOutput("matrix_export_status"),
         
         tabsetPanel(
-          tabPanel(
-            "BioGeoBEARS",
-            br(),
-            p("Export presence-absence matrix in BioGeoBEARS format (.data)."),
-            downloadButton("download_biogeobears", "Download BioGeoBEARS File", class = "btn btn-success"),
-            br(), br(),
-            verbatimTextOutput("biogeobears_export_status")
-          ),
+          
           
           tabPanel(
             "TNT Matrix",
@@ -960,6 +881,127 @@ shinyUI(
       )
     ),
     
+    # Tab 6: BioGeoBEARS Matrix Preparation
+    tabPanel(
+      "BioGeoBEARS Matrix Preparation",
+      icon = icon("table"),
+      
+      div(
+        class = "container-fluid",
+        style = "padding: 20px;",
+        div(
+          class = "step-title",
+          "Step 6: BioGeoBEARS Matrix Preparation"
+        ),
+        div(
+          class = "guidance-text",
+          p("Generate a presence/absence matrix for BioGeoBEARS from your occurrence data and shapefile."),
+          p("The shapefile loaded in Step 1 will be used as the geographic areas. Choose an extrapolation method to determine species presence in each area.")
+        ),
+        
+        # --- Shapefile Status ---
+        h4("Shapefile Status"),
+        div(
+          style = "margin-bottom: 15px;",
+          htmlOutput("bgb_shapefile_status_from_step1")
+        ),
+        
+        hr(),
+        
+        # --- Configuration ---
+        conditionalPanel(
+          condition = "output.bgb_shapefile_loaded == true",
+          
+          h4("Matrix Generation Settings"),
+          
+          fluidRow(
+            column(4,
+              selectInput(
+                "bgb_polygon_id_column",
+                "Polygon ID column (from shapefile):",
+                choices = c("(Auto-detect)" = ""),
+                selected = ""
+              )
+            ),
+            column(4,
+              radioButtons(
+                "bgb_extrap_method",
+                "Extrapolation method:",
+                choices = c(
+                  "MST (Minimum Spanning Tree)" = "mst",
+                  "Convex Hull" = "convexhull",
+                  "Buffer" = "buffer"
+                ),
+                selected = "mst"
+              )
+            ),
+            column(4,
+              conditionalPanel(
+                condition = "input.bgb_extrap_method == 'buffer'",
+                numericInput(
+                  "bgb_buffer_width",
+                  "Buffer width (km):",
+                  value = 100,
+                  min = 1,
+                  max = 5000,
+                  step = 10
+                )
+              )
+            )
+          ),
+          
+          br(),
+          actionButton("generate_bgb_matrix", "Generate BioGeoBEARS Matrix",
+                       class = "btn btn-primary btn-lg",
+                       icon = icon("cogs")),
+          br(), br(),
+          
+          hr(),
+          
+          # --- Results ---
+          h4("Matrix Status"),
+          div(
+            style = "border: 1px solid #ddd; background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;",
+            verbatimTextOutput("bgb_matrix_status")
+          ),
+          
+          # --- Matrix Preview ---
+          conditionalPanel(
+            condition = "output.bgb_matrix_generated == true",
+            
+            h4("Matrix Preview"),
+            div(
+              style = "border: 1px solid #ddd; background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px; max-height: 300px; overflow-y: auto;",
+              verbatimTextOutput("bgb_matrix_preview")
+            ),
+            
+            h4("Area-Code Mapping"),
+            div(
+              style = "border: 1px solid #ddd; background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px; max-height: 300px; overflow-y: auto;",
+              verbatimTextOutput("bgb_area_code_mapping_status")
+            ),
+            
+            hr(),
+            
+            h4("Downloads"),
+            fluidRow(
+              column(4,
+                downloadButton("download_bgb_matrix_data", "Download .data file", class = "btn btn-success")
+              ),
+              column(4,
+                downloadButton("download_bgb_matrix_csv", "Download .csv file", class = "btn btn-info")
+              ),
+              column(4,
+                downloadButton("download_bgb_area_code_mapping", "Download area-code mapping", class = "btn btn-default")
+              )
+            ),
+            br(),
+            p("Ready to proceed to Step 7: BioGeoBEARS Setup", style = "font-size: 12px; color: #28a745; font-weight: bold;")
+          )
+        )
+      )
+    ),
+    
     # Tab 7: BioGeoBEARS Setup
     tabPanel(
       "BioGeoBEARS Setup",
@@ -970,7 +1012,7 @@ shinyUI(
         style = "padding: 20px;",
         div(
           class = "step-title",
-          "Step 6: BioGeoBEARS Configuration"
+          "Step 7: BioGeoBEARS Configuration"
         ),
         div(
           class = "guidance-text",
@@ -1186,7 +1228,17 @@ shinyUI(
             h5("Time-Stratified Validator"),
             verbatimTextOutput("bgb_strat_validation")
           )
-        )
+        ),
+        
+        hr(),
+        
+        h4("Configuration Summary"),
+        div(
+          style = "border: 1px solid #ddd; background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px; max-height: 400px; overflow-y: auto;",
+          verbatimTextOutput("bgb_configuration_summary")
+        ),
+        downloadButton("download_bgb_configuration", "Download Configuration", class = "btn btn-default"),
+        br(), br()
       )
     ),
     
@@ -1329,7 +1381,7 @@ shinyUI(
               column(3,
                 sliderInput(
                   "range_uncertainty_state_cex_app_step8",
-                  "Pie and terminal box size:",
+                  "Pie size:",
                   min = 0.3, max = 2, value = 1.0, step = 0.05
                 )
               )

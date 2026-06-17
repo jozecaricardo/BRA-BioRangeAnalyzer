@@ -24,8 +24,9 @@ if (!dep_check$all_installed) {
 # Source all custom functions
 tryCatch({
   source("all_functions.R", local = FALSE)
+  source("biogeobears_range_methods.R", local = FALSE)
 }, error = function(e) {
-  warning("Could not source all_functions.R: ", e$message)
+  warning("Could not source custom functions: ", e$message)
 })
 
 bind_optional_fun <- function(path, fun_name, fallback) {
@@ -86,7 +87,7 @@ tryCatch({
 required_packages <- c(
   "shiny", "shinydashboard", "shinyjs", "shinyWidgets", "shinythemes",
   "leaflet", "DT", "ape", "phangorn", "TreeSearch", "dplyr", "tidyr", "ggplot2", "plotly", 
-  "RColorBrewer", "stats", "sp", "raster", "terra", "sf", "viridis", "geosphere"
+  "RColorBrewer", "stats", "sp", "raster", "terra", "sf", "viridis", "geosphere", "fossil"
 )
 
 for (pkg in required_packages) {

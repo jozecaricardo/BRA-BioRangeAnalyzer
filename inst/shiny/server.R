@@ -11,7 +11,7 @@ function(input, output, session) {
           div(
             style = "margin-left: 15px; font-size: 13px;",
             p("🔵 ", strong("Occurrence points:"), " Raw occurrence data points colored by taxon"),
-            p("🟦 ", strong("Grid cells:"), " Predicted presence areas based on irregular polygon overlay (cells touching provinces where taxa occur)"),
+            p("🟦 ", strong("Grid cells:"), " Predicted presence areas based on irregular polygon overlay (cells touching areas where taxa occur)"),
             p("🎯 ", strong("Interactive controls:"), " Toggle points/grids on/off, adjust transparency, and select individual taxa to focus on specific species")
           ),
           p("This visualization helps you understand how your occurrence data is being converted into spatial predictions.", style = "font-size: 12px; font-style: italic; margin-top: 10px;")
@@ -37,6 +37,9 @@ function(input, output, session) {
     pres_abs_buff_grid_res = NULL,
     pres_abs_mst = NULL,
     pres_abs_mst_grid_res = NULL,
+    bgb_matrix = NULL,
+    bgb_shapefile = NULL,
+    bgb_mapping = NULL,
     geometry = NULL,
     extrap_method = NULL,
     loaded_shapefiles = list(),
@@ -769,6 +772,177 @@ function(input, output, session) {
     stop("PAE-PCE function could not be resolved in the current runtime.")
   }
   
+  # ============================================================================
+  # BIOGEOBEARS MATRIX PREPARATION
+  # ============================================================================
+  
+  # Monitor shapefile from Step 1 for BioGeoBEARS
+  observe({
+    if (!is.null(data_store$study_area_shapefile)) {
+      # Convert SpatVector to sf for BioGeoBEARS (other analyses use SpatVector)
+      if (inherits(data_store$study_area_shapefile, "SpatVector")) {
+        data_store$bgb_shapefile <- sf::st_as_sf(data_store$study_area_shapefile)
+      } else {
+        data_store$bgb_shapefile <- data_store$study_area_shapefile
+      }
+      
+      shapefile_columns <- names(as.data.frame(data_store$study_area_shapefile))
+      shapefile_columns <- shapefile_columns[shapefile_columns != "geom"]
+      
+      shiny::updateSelectInput(session, "bgb_polygon_id_column",
+                              choices = c("(Auto-detect)" = "", shapefile_columns))
+      
+      output$bgb_shapefile_status_from_step1 <- renderText({
+        paste0(
+          "<div style='display: flex; align-items: flex-start; gap: 12px;'>",
+          "<div style='width: 40px; height: 40px; background-color: #28a745; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; flex-shrink: 0;'>OK</div>",
+          "<div>",
+          "<strong style='color: #28a745; font-size: 16px;'>Shapefile from Step 1 loaded!</strong><br/>",
+          "<small style='color: #666;'>Ready to use for BioGeoBEARS matrix preparation</small>",
+          "</div>",
+          "</div>"
+        )
+      })
+      
+      output$bgb_shapefile_loaded <- reactive({ TRUE })
+      outputOptions(output, "bgb_shapefile_loaded", suspendWhenHidden = FALSE)
+    } else {
+      output$bgb_shapefile_status_from_step1 <- renderText({
+        paste0(
+          "<div style='display: flex; align-items: flex-start; gap: 12px;'>",
+          "<div style='width: 40px; height: 40px; background-color: #dc3545; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; flex-shrink: 0;'>!</div>",
+          "<div>",
+          "<strong style='color: #dc3545; font-size: 16px;'>No shapefile loaded</strong><br/>",
+          "<small style='color: #666;'>Please load a shapefile in Step 1 first</small>",
+          "</div>",
+          "</div>"
+        )
+      })
+      
+      output$bgb_shapefile_loaded <- reactive({ FALSE })
+      outputOptions(output, "bgb_shapefile_loaded", suspendWhenHidden = FALSE)
+    }
+  })
+  
+  # Generate BioGeoBEARS Matrix
+  observeEvent(input$generate_bgb_matrix, {
+    req(data_store$occurrence, data_store$bgb_shapefile)
+    
+    # Show progress
+    withProgress(message = 'Generating BioGeoBEARS Matrix...', value = 0, {
+      tryCatch({
+        output_dir <- file.path(getwd(), "out_biogeobears_matrix")
+        if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+        
+        incProgress(0.1, detail = "Preparing data...")
+        
+        # Get parameters
+        occ_data <- data_store$occurrence
+        shape <- data_store$bgb_shapefile
+        id_col <- input$bgb_polygon_id_column
+        if (id_col == "") id_col <- names(as.data.frame(shape))[1]
+        
+        method <- input$bgb_extrap_method
+        
+        incProgress(0.3, detail = paste("Running", method, "extrapolation..."))
+        
+        # Run appropriate method
+        if (method == "mst") {
+          result <- calcRange_mst_biogeobears(occ_data, shape, id_col, output_dir = output_dir)
+        } else if (method == "convexhull") {
+          result <- calcRange_convexhull_biogeobears(occ_data, shape, id_col, output_dir = output_dir)
+        } else if (method == "buffer") {
+          result <- calcRange_buffer_biogeobears(occ_data, shape, id_col, buffer_width_km = input$bgb_buffer_width, output_dir = output_dir)
+        }
+        
+        incProgress(0.8, detail = "Finalizing matrix...")
+        
+        # Store results
+        data_store$bgb_matrix <- result$matrix
+        
+        # Try to load mapping if it exists
+        mapping_file <- file.path(output_dir, "area_code_mapping.csv")
+        if (file.exists(mapping_file)) {
+          data_store$bgb_mapping <- read.csv(mapping_file)
+
+        # Update area-code mapping snapshot for display
+        bgb_area_code_mapping_snapshot(list(
+          mapping = data_store$bgb_mapping,
+          format = toupper(method),
+          timestamp = Sys.time()
+        ))
+        }
+        
+        # Update UI
+        output$bgb_matrix_status <- renderText({
+          paste0("Success! Matrix generated.\n",
+                 "Species: ", result$n_species, "\n",
+                 "Areas: ", result$n_ranges, "\n",
+                 "Total presences: ", sum(result$matrix))
+        })
+        
+        output$bgb_matrix_preview <- renderPrint({
+          head(result$matrix)
+        })
+        
+        output$bgb_matrix_generated <- reactive({ TRUE })
+        outputOptions(output, "bgb_matrix_generated", suspendWhenHidden = FALSE)
+        
+        # Automatically select "Use matrix generated in this app" in BioGeoBEARS Setup
+        shiny::updateRadioButtons(session, "bgb_geog_source", selected = "current")
+        
+        incProgress(1, detail = "Done!")
+        
+      }, error = function(e) {
+        output$bgb_matrix_status <- renderText({
+          paste("Error:", e$message)
+        })
+      })
+    })
+  })
+  
+  # Download handlers for BioGeoBEARS Matrix
+  output$download_bgb_matrix_data <- downloadHandler(
+    filename = function() { "pres_abs_biogeobears.data" },
+    content = function(file) {
+      req(data_store$bgb_matrix)
+      # We need to recreate the .data format text
+      mat <- data_store$bgb_matrix
+      n_species <- ncol(mat)
+      n_ranges <- nrow(mat)
+      range_codes <- rownames(mat)
+      species_names <- colnames(mat)
+      
+      texto <- character()
+      header <- paste(n_species, n_ranges, paste0('(', paste(range_codes, collapse = ' '), ')'), sep = ' ')
+      texto <- c(texto, header)
+      
+      for (j in 1:n_species) {
+        presence_string <- paste(mat[, j], collapse = '')
+        sp_name <- gsub(" ", "_", species_names[j])
+        texto <- c(texto, paste(sp_name, presence_string))
+      }
+      
+      writeLines(texto, con = file)
+    }
+  )
+  
+  output$download_bgb_matrix_csv <- downloadHandler(
+    filename = function() { "pres_abs_biogeobears.csv" },
+    content = function(file) {
+      req(data_store$bgb_matrix)
+      write.csv(data_store$bgb_matrix, file)
+    }
+  )
+  
+  output$download_bgb_mapping <- downloadHandler(
+    filename = function() { "area_code_mapping.csv" },
+    content = function(file) {
+      req(data_store$bgb_mapping)
+      write.csv(data_store$bgb_mapping, file, row.names = FALSE)
+    }
+  )
+
   # ===== DATA INPUT TAB =====
   
   # Function to standardize and validate occurrence data
@@ -2359,6 +2533,192 @@ function(input, output, session) {
     )
   }
 
+  # ============================================================================
+  # Compute richness by extrapolation-polygon intersection (no grids)
+  # This function recalculates the extrapolation geometry per species and
+  # intersects it with the irregular polygons to determine presence.
+  # Logic: if the extrapolation geometry (MST lines, convex hull, or buffer)
+  # intersects a polygon, that species is present in that polygon.
+  # Points are also intersected as fallback.
+  # ============================================================================
+  compute_richness_by_extrapolation_intersection <- function(occ_data,
+                                                             bins_shape,
+                                                             bin_id_column,
+                                                             method = "convex_hull",
+                                                             buffer_width_km = 50) {
+    if (is.null(occ_data) || nrow(occ_data) == 0) {
+      stop("No occurrence data available for richness calculation.")
+    }
+    if (!all(c("spp", "long", "lat") %in% names(occ_data))) {
+      stop("Occurrence data must contain columns: spp, long, lat.")
+    }
+
+    # Prepare occurrence data
+    dat <- data.frame(
+      species = as.character(occ_data$spp),
+      long = as.numeric(occ_data$long),
+      lat = as.numeric(occ_data$lat),
+      stringsAsFactors = FALSE
+    )
+    dat <- dat[stats::complete.cases(dat), , drop = FALSE]
+    if (nrow(dat) == 0) stop("No valid occurrence points after filtering NAs.")
+
+    occurrences_sf <- sf::st_as_sf(dat, coords = c("long", "lat"), crs = 4326)
+
+    # Prepare bins
+    bins_sf <- safe_valid_sf(normalize_to_wgs84_sf(bins_shape))
+    if (nrow(bins_sf) == 0) stop("No valid geometries in irregular polygons shapefile.")
+
+    # Detect bin ID column
+    if (is.null(bin_id_column) || !nzchar(bin_id_column) || !(bin_id_column %in% names(bins_sf))) {
+      cols <- setdiff(names(bins_sf), "geometry")
+      if (length(cols) == 0) stop("No attribute columns in irregular polygons shapefile.")
+      bin_id_column <- cols[1]
+    }
+
+    occurrences_transformed <- sf::st_transform(occurrences_sf, sf::st_crs(bins_sf))
+    all_species <- sort(unique(dat$species))
+    all_bins <- sort(unique(as.character(bins_sf[[bin_id_column]])))
+    message(sprintf("[Richness] bins_sf has %d features, %d unique bin IDs. Occurrences: %d points, %d species. Method: %s",
+                    nrow(bins_sf), length(all_bins), nrow(occurrences_transformed), length(all_species), method))
+
+    # Initialise presence-absence matrix (rows = polygons, cols = species)
+    pres_abs_matrix <- matrix(0,
+      nrow = length(all_bins),
+      ncol = length(all_species),
+      dimnames = list(all_bins, all_species)
+    )
+
+    for (sp in all_species) {
+      sp_occ <- occurrences_transformed[occurrences_transformed$species == sp, ]
+      n_points <- nrow(sp_occ)
+
+      extrapolation_sf <- NULL
+
+      if (method == "mst" && n_points >= 2) {
+        # Build MST lines
+        sp_coords <- sf::st_coordinates(sp_occ)
+        distances <- geosphere::distm(sp_coords, fun = geosphere::distHaversine)
+        distances_km <- distances / 1000
+        mst_result <- tryCatch(fossil::dino.mst(distances_km), error = function(e) NULL)
+        if (!is.null(mst_result) && is.matrix(mst_result)) {
+          mst_edges <- which(mst_result > 0, arr.ind = TRUE)
+          if (!is.matrix(mst_edges)) mst_edges <- matrix(mst_edges, nrow = 1)
+          mst_edges <- mst_edges[mst_edges[, 1] < mst_edges[, 2], , drop = FALSE]
+          if (nrow(mst_edges) > 0) {
+            mst_lines <- lapply(seq_len(nrow(mst_edges)), function(i) {
+              sf::st_linestring(matrix(c(sp_coords[mst_edges[i, 1], ],
+                                         sp_coords[mst_edges[i, 2], ]),
+                                       nrow = 2, byrow = TRUE))
+            })
+            mst_geom <- sf::st_multilinestring(mst_lines)
+            extrapolation_sf <- sf::st_sf(
+              species = sp,
+              geometry = sf::st_sfc(mst_geom, crs = sf::st_crs(bins_sf))
+            )
+          }
+        }
+
+      } else if (method == "convex_hull" && n_points >= 3) {
+        # Build convex hull polygon
+        hull_geom <- sf::st_convex_hull(sf::st_union(sp_occ))
+        extrapolation_sf <- sf::st_sf(
+          species = sp,
+          geometry = sf::st_sfc(hull_geom, crs = sf::st_crs(bins_sf))
+        )
+
+      } else if (method == "buffer" && n_points >= 1) {
+        # Build buffer polygon
+        is_geographic <- sf::st_is_longlat(bins_sf)
+        if (is_geographic) {
+          sp_occ_proj <- sf::st_transform(sp_occ, 3857)
+          buffer_geom <- sf::st_buffer(sf::st_union(sp_occ_proj), dist = buffer_width_km * 1000)
+          buffer_sf <- sf::st_sf(species = sp, geometry = sf::st_sfc(buffer_geom, crs = 3857))
+          extrapolation_sf <- sf::st_transform(buffer_sf, sf::st_crs(bins_sf))
+        } else {
+          buffer_geom <- sf::st_buffer(sf::st_union(sp_occ), dist = buffer_width_km * 1000)
+          extrapolation_sf <- sf::st_sf(
+            species = sp,
+            geometry = sf::st_sfc(buffer_geom, crs = sf::st_crs(bins_sf))
+          )
+        }
+      }
+
+      # Intersect extrapolation geometry with bins (using st_join like the working rotina)
+      bins_with_extrap <- character(0)
+      if (!is.null(extrapolation_sf)) {
+        extrap_join <- sf::st_join(bins_sf, extrapolation_sf, join = sf::st_intersects)
+        bins_with_extrap <- unique(extrap_join[[bin_id_column]][!is.na(extrap_join$species)])
+      }
+
+      # Intersect occurrence points with bins (using st_join)
+      point_join <- sf::st_join(bins_sf, sp_occ, join = sf::st_intersects)
+      bins_with_points <- unique(point_join[[bin_id_column]][!is.na(point_join$species)])
+
+      # Combine: presence = extrapolation OR points
+      bins_with_presence <- sort(unique(c(bins_with_extrap, bins_with_points)))
+      bins_with_presence <- bins_with_presence[!is.na(bins_with_presence)]
+
+      for (bin_name in bins_with_presence) {
+        if (bin_name %in% rownames(pres_abs_matrix)) {
+          pres_abs_matrix[bin_name, sp] <- 1
+        }
+      }
+    }
+
+    # Clean matrix: remove empty rows and columns
+    pres_abs_clean <- pres_abs_matrix[!is.na(rownames(pres_abs_matrix)), , drop = FALSE]
+    pres_abs_clean <- pres_abs_clean[rowSums(pres_abs_clean) > 0, , drop = FALSE]
+    col_sums <- colSums(pres_abs_clean)
+    pres_abs_clean <- pres_abs_clean[, col_sums > 0, drop = FALSE]
+
+    # Calculate richness per bin
+    richness_per_bin <- data.frame(
+      bin_id = rownames(pres_abs_clean),
+      n_species = as.integer(rowSums(pres_abs_clean)),
+      species_list = apply(pres_abs_clean, 1, function(row) {
+        paste(sort(names(row)[row == 1]), collapse = ", ")
+      }),
+      stringsAsFactors = FALSE
+    )
+
+    # Create bins_richness sf object for Leaflet
+    bins_sf[[bin_id_column]] <- as.character(bins_sf[[bin_id_column]])
+    # Rename richness_per_bin$bin_id to match the bin_id_column name for a clean join
+    richness_for_join <- richness_per_bin
+    names(richness_for_join)[names(richness_for_join) == "bin_id"] <- bin_id_column
+    bins_with_richness <- tryCatch({
+      merged <- dplyr::left_join(bins_sf, richness_for_join, by = bin_id_column)
+      merged$n_species <- ifelse(is.na(merged$n_species), 0L, as.integer(merged$n_species))
+      merged$species_list <- ifelse(is.na(merged$species_list), "", merged$species_list)
+      merged
+    }, error = function(e) {
+      # Fallback: add richness columns manually via match
+      idx <- match(bins_sf[[bin_id_column]], richness_per_bin$bin_id)
+      bins_sf$n_species <- ifelse(is.na(idx), 0L, richness_per_bin$n_species[idx])
+      bins_sf$species_list <- ifelse(is.na(idx), "", richness_per_bin$species_list[idx])
+      bins_sf
+    })
+
+    # Species per bin summary
+    species_per_bin <- richness_per_bin[richness_per_bin$n_species > 0, , drop = FALSE]
+
+    # Bin ID mapping
+    bin_id_mapping <- data.frame(
+      bin_name = all_bins,
+      bin_number = seq_along(all_bins),
+      stringsAsFactors = FALSE
+    )
+
+    list(
+      bins_richness = bins_with_richness,
+      species_per_bin = species_per_bin,
+      bin_id_mapping = bin_id_mapping,
+      bin_id_column = bin_id_column,
+      pres_abs_matrix = pres_abs_clean
+    )
+  }
+
   build_points_presence_absence <- function(occ_data, shape_file, grid_res) {
     if (is.null(occ_data) || nrow(occ_data) == 0) {
       stop("No occurrence points available to build point-based matrix.")
@@ -3402,7 +3762,7 @@ function(input, output, session) {
           if (identical(method, "mst")) {
             data_store$pres_abs_mst <- data_store$pres_abs
             data_store$pres_abs_mst_grid_res <- grid_res
-          } else if (identical(method, "mpc")) {
+          } else if (identical(method, "convex_hull")) {
             data_store$pres_abs_mpc <- data_store$pres_abs
             data_store$pres_abs_mpc_grid_res <- grid_res
           } else if (identical(method, "buffer")) {
@@ -3673,7 +4033,7 @@ function(input, output, session) {
         data_store$extrap_shapefile <- shape_file
         data_store$study_area <- shape_file
         
-        if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
+        if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst", "occurrence_only")) {
           if (is.null(data_store$study_area_shapefile)) {
             stop("To compute diversity by irregular polygons, please load the study area shapefile in Step 1.")
           }
@@ -3714,50 +4074,48 @@ function(input, output, session) {
 
         ensure_species_palette(extra_species = unique(occ_data$spp))
 
-        if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst")) {
+        if (isTRUE(input$enable_irregular_richness) && method %in% c("buffer", "convex_hull", "mst", "occurrence_only")) {
           if (!is.null(data_store$study_area_shapefile) && !is.null(input$irregular_richness_id_column) && input$irregular_richness_id_column != "") {
+            # Determine buffer width if method is buffer
+            buffer_w <- if (method == "buffer" && !is.null(input$buffer_width)) {
+              as.numeric(input$buffer_width)
+            } else {
+              50
+            }
             richness_result <- tryCatch({
-              calcRange_irregular_bins(
-                xy = data_store$occurrence,
-                bins_shapefile = data_store$study_area_shapefile,
+              # Recalculate extrapolation per species and intersect with irregular polygons (no grids)
+              compute_richness_by_extrapolation_intersection(
+                occ_data = occ_data,
+                bins_shape = data_store$study_area_shapefile,
                 bin_id_column = input$irregular_richness_id_column,
-                resol = c(1, 1),
-                crs_input = 4326,
-                output_dir = tempdir()
+                method = method,
+                buffer_width_km = buffer_w
               )
             }, error = function(e) {
-              append_extrap_log(paste0("ERROR: Could not compute irregular polygon diversity: ", e$message))
+              append_extrap_log(paste0("ERROR: Could not compute irregular polygon richness: ", e$message))
               NULL
             })
 
             if (!is.null(richness_result)) {
+              # Store richness data for Leaflet visualisation ONLY - do NOT overwrite pres_abs
               data_store$irregular_bins_richness <- richness_result$bins_richness
               data_store$irregular_bins_species_table <- richness_result$species_per_bin
               data_store$irregular_bins_id_column <- input$irregular_richness_id_column
+              data_store$irregular_bins_bin_id_mapping <- richness_result$bin_id_mapping
               data_store$irregular_bins_method <- method
-              append_extrap_log("Irregular polygon diversity computed successfully.")
+              data_store$geometry <- richness_result$bins_richness
+              data_store$secondary_study_areas <- c(
+                data_store$secondary_study_areas,
+                list("Irregular Polygons (Diversity)" = data_store$study_area_shapefile)
+              )
+              # Log diagnostic info
+              n_with_richness <- sum(richness_result$bins_richness$n_species > 0, na.rm = TRUE)
+              n_total_bins <- nrow(richness_result$bins_richness)
+              max_richness <- max(richness_result$bins_richness$n_species, na.rm = TRUE)
+              append_extrap_log(paste0("Irregular polygon richness computed: ", n_with_richness, " of ", n_total_bins, " polygons have species (max richness = ", max_richness, ")."))
             }
           } else {
             append_extrap_log("ERROR: Study area shapefile or ID column not selected. Cannot compute irregular polygon diversity.")
-          }
-
-          if (!is.null(richness_result)) {
-            data_store$pres_abs <- richness_result$pres_abs
-            data_store$pres_abs_irregular <- richness_result$pres_abs
-            data_store$geometry <- richness_result$bins_richness
-            data_store$irregular_bins_bin_id_mapping <- richness_result$bin_id_mapping
-            data_store$matrix_is_irregular_aggregated <- TRUE
-          }
-
-          append_extrap_log(
-            paste0("Irregular polygon diversity computed successfully.")
-          )
-
-          if (!is.null(richness_result)) {
-            data_store$secondary_study_areas <- c(
-              data_store$secondary_study_areas,
-              list("Irregular Polygons (Diversity)" = data_store$study_area_shapefile)
-            )
           }
         }
         
@@ -5017,9 +5375,9 @@ function(input, output, session) {
       }
       
       # Check if shapefile is loaded
-      if (is.null(data_store$mst_context$shapeFile)) {
+      if (is.null(data_store$mst_context$shapeFile) && is.null(data_store$study_area_shapefile)) {
         output$pae_pce_log <- renderText({
-          "Error: No study area shapefile loaded. Please load a shapefile in Step 3."
+          "Error: No study area shapefile loaded. Please load a shapefile in Step 1."
         })
         return()
       }
@@ -5061,9 +5419,9 @@ function(input, output, session) {
           "mst" = data_store$pres_abs_mst_grid_res,
           "mpc" = data_store$pres_abs_mpc_grid_res,
           "buffer" = data_store$pres_abs_buff_grid_res,
-          data_store$mst_context$resol
+          data_store$mst_context$resol %||% input$grid_resolution %||% 1
         )
-        shape <- data_store$mst_context$shapeFile
+        shape <- data_store$mst_context$shapeFile %||% data_store$study_area_shapefile
       }
       n_iter <- input$pae_n_iterations
 
@@ -5273,6 +5631,7 @@ function(input, output, session) {
   
   # ===== EXPORT FILES TAB =====
   area_code_mapping_snapshot <- reactiveVal(NULL)
+  bgb_area_code_mapping_snapshot <- reactiveVal(NULL)
 
   resolve_matrix_for_export <- function(preference = NULL) {
     pref <- preference %||% (input$matrix_export_basis %||% "current")
@@ -5378,6 +5737,46 @@ function(input, output, session) {
     }
   )
   
+
+  # BioGeoBEARS area-code mapping
+  output$bgb_area_code_mapping_status <- renderPrint({
+    snap <- bgb_area_code_mapping_snapshot()
+    if (is.null(snap) || is.null(snap$mapping)) {
+      cat("No area-code mapping generated yet.\n")
+      cat("Generate a BioGeoBEARS matrix to create abbreviations.\n")
+      return(invisible(NULL))
+    }
+    cat("Latest mapping format:", snap$format, "\n")
+    cat("Generated at:", format(snap$timestamp), "\n")
+    cat("Areas mapped:", nrow(snap$mapping), "\n")
+    if (nrow(snap$mapping) > 0) {
+      preview <- head(snap$mapping, 8)
+      cat("Preview (code => area):\n")
+      for (i in seq_len(nrow(preview))) {
+        cat("  ", preview$code[i], "=>", preview$original_name[i], "\n")
+      }
+      if (nrow(snap$mapping) > 8) {
+        cat("  ...\n")
+      }
+    }
+  })
+
+  output$download_bgb_area_code_mapping <- downloadHandler(
+    filename = function() {
+      snap <- bgb_area_code_mapping_snapshot()
+      ts <- if (!is.null(snap) && !is.null(snap$timestamp)) format(snap$timestamp, "%Y%m%d_%H%M%S") else format(Sys.time(), "%Y%m%d_%H%M%S")
+      fmt <- if (!is.null(snap) && !is.null(snap$format)) snap$format else "biogeobears"
+      paste0("area_code_mapping_", fmt, "_", ts, ".csv")
+    },
+    content = function(file) {
+      snap <- bgb_area_code_mapping_snapshot()
+      if (is.null(snap) || is.null(snap$mapping) || nrow(snap$mapping) == 0) {
+        write.csv(data.frame(message = "No mapping available yet."), file, row.names = FALSE)
+        return(invisible(NULL))
+      }
+      write.csv(snap$mapping, file, row.names = FALSE)
+    }
+  )
   output$download_biogeobears <- downloadHandler(
     filename = function() { 
       method <- data_store$extrap_method
@@ -5893,10 +6292,10 @@ function(input, output, session) {
   }
 
   write_geog_from_current_matrix <- function(file_path) {
-    # Try to get matrix from pres_abs_occurrence_only first (for occurrence_only method), then fall back to pres_abs
-    mat <- data_store$pres_abs_occurrence_only %||% data_store$pres_abs
+    # Use the matrix generated in Step 6 (BioGeoBEARS Matrix Preparation)
+    mat <- data_store$bgb_matrix
     if (is.null(mat)) {
-      stop("No matrix available from Step 3/5. Run an extrapolation first or upload .data file.")
+      stop("No matrix available from Step 6. Run BioGeoBEARS Matrix Preparation first or upload .data file.")
     }
 
     if ("ROOT" %in% rownames(mat)) {
@@ -6910,10 +7309,10 @@ function(input, output, session) {
 
   output$bgb_input_status <- renderPrint({
     cat("BioGeoBEARS input status\n")
-    cat("- Geographic source:", ifelse(input$bgb_geog_source %||% "current" == "current", "Current matrix (Step 3/5)", "Uploaded .data file"), "\n")
+    cat("- Geographic source:", ifelse(input$bgb_geog_source %||% "current" == "current", "Current matrix (Step 6)", "Uploaded .data file"), "\n")
     cat("- Tree source:", ifelse(input$bgb_tree_source %||% "step1" == "step1", "Tree from Step 1", "Uploaded Newick file"), "\n")
-    if ((input$bgb_geog_source %||% "current") == "current" && !is.null(data_store$pres_abs)) {
-      mat_status <- data_store$pres_abs
+    if ((input$bgb_geog_source %||% "current") == "current" && !is.null(data_store$bgb_matrix)) {
+      mat_status <- data_store$bgb_matrix
       if ("ROOT" %in% rownames(mat_status)) {
         mat_status <- mat_status[rownames(mat_status) != "ROOT", , drop = FALSE]
       }
@@ -6930,6 +7329,71 @@ function(input, output, session) {
     if ((input$bgb_tree_source %||% "step1") == "upload") {
       cat("- Uploaded tree:", ifelse(is.null(input$bgb_tree_file), "not loaded", input$bgb_tree_file$name), "\n")
     }
+
+  output$bgb_configuration_summary <- renderPrint({
+    cat("═══════════════════════════════════════════════════════════════\n")
+    cat("BioGeoBEARS CONFIGURATION SUMMARY\n")
+    cat("═══════════════════════════════════════════════════════════════\n\n")
+    
+    cat("[INPUTS]\n")
+    cat("Geography source:", ifelse(input$bgb_geog_source %||% "current" == "current", "current", "upload"), "\n")
+    cat("Tree source:", ifelse(input$bgb_tree_source %||% "step1" == "step1", "step1", "upload"), "\n")
+    
+    cat("\n[MODELS]\n")
+    models <- input$bgb_models %||% c("DEC", "DECJ")
+    cat("Models:", paste(models, collapse=", "), "\n")
+    
+    cat("\n[PARAMETERS]\n")
+    cat("Max range size (requested):", input$bgb_max_range_size %||% 3, "\n")
+    cat("Min branch length:", input$bgb_min_branchlength %||% 0.000001, "\n")
+    cat("Number of cores:", input$bgb_num_cores %||% 1, "\n")
+    cat("Optimizer:", input$bgb_optimizer %||% "GenSA", "\n")
+    cat("Include null range:", input$bgb_include_null_range %||% FALSE, "\n")
+    
+    cat("\n[OPTIONS]\n")
+    cat("Warm-start d/e from nested model:", input$bgb_use_nested_starts %||% TRUE, "\n")
+    cat("Warm-start x/w/n from nested model:", input$bgb_use_nested_starts_xwn %||% FALSE, "\n")
+    cat("Use distance matrix (x):", input$use_distance_matrix %||% FALSE, "\n")
+    cat("Use dispersal multiplier:", input$use_dispersal_multiplier %||% FALSE, "\n")
+    cat("Use time slices:", input$use_time_slices %||% FALSE, "\n")
+    
+    cat("\n═══════════════════════════════════════════════════════════════\n")
+  })
+
+  output$download_bgb_configuration <- downloadHandler(
+    filename = function() {
+      paste0("biogeobears_config_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt")
+    },
+    content = function(file) {
+      sink(file)
+      on.exit(sink())
+      
+      cat("BioGeoBEARS CONFIGURATION REPORT\n")
+      cat("Generated:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n")
+      
+      cat("[INPUTS]\n")
+      cat("Geography source:", ifelse(input$bgb_geog_source %||% "current" == "current", "current", "upload"), "\n")
+      cat("Tree source:", ifelse(input$bgb_tree_source %||% "step1" == "step1", "step1", "upload"), "\n")
+      
+      cat("\n[MODELS]\n")
+      models <- input$bgb_models %||% c("DEC", "DECJ")
+      cat("Models:", paste(models, collapse=", "), "\n")
+      
+      cat("\n[PARAMETERS]\n")
+      cat("Max range size (requested):", input$bgb_max_range_size %||% 3, "\n")
+      cat("Min branch length:", input$bgb_min_branchlength %||% 0.000001, "\n")
+      cat("Number of cores:", input$bgb_num_cores %||% 1, "\n")
+      cat("Optimizer:", input$bgb_optimizer %||% "GenSA", "\n")
+      cat("Include null range:", input$bgb_include_null_range %||% FALSE, "\n")
+      
+      cat("\n[OPTIONS]\n")
+      cat("Warm-start d/e from nested model:", input$bgb_use_nested_starts %||% TRUE, "\n")
+      cat("Warm-start x/w/n from nested model:", input$bgb_use_nested_starts_xwn %||% FALSE, "\n")
+      cat("Use distance matrix (x):", input$use_distance_matrix %||% FALSE, "\n")
+      cat("Use dispersal multiplier:", input$use_dispersal_multiplier %||% FALSE, "\n")
+      cat("Use time slices:", input$use_time_slices %||% FALSE, "\n")
+    }
+  )
   })
 
   observeEvent(input$run_analysis, {
@@ -6991,13 +7455,11 @@ function(input, output, session) {
       if (effective_max_range > requested_max_range) {
         bgb_analysis_status(
           paste0(
-            "Running BioGeoBEARS models... (auto-adjusted max range size from ",
-            requested_max_range,
-            " to ",
-            effective_max_range,
-            " because at least one tip occupies ",
-            observed_max_tipsize,
-            " areas)"
+            "⚠️  WARNING: Max range size auto-adjusted!\n",
+            "Requested: ", requested_max_range, " | Adjusted to: ", effective_max_range, "\n",
+            "Reason: At least one species occupies ", observed_max_tipsize, " areas.\n",
+            "Note: The maximum range size cannot be smaller than the largest observed range.\n\n",
+            "Running BioGeoBEARS models..."
           )
         )
       }
