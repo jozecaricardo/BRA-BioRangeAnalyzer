@@ -5341,20 +5341,25 @@ function(input, output, session) {
         })
         return()
       }
-    } else if (selected_method == "occurrence_only") {
-      # For occurrence_only, we'll generate the matrix on-the-fly using grid resolution
-      # Validate that occurrence data is loaded
+    } else if (selected_method == "occurrence_only" || selected_method == "occurrence_irregular") {
+      # For occurrence_only or occurrence_irregular, validate inputs
       if (is.null(data_store$occurrence)) {
         output$pae_pce_log <- renderText({
           "Error: No occurrence data loaded. Please load occurrence data in Step 1 first."
         })
         return()
       }
-      
       # Check if shapefile is loaded
       if (is.null(data_store$study_area_shapefile)) {
         output$pae_pce_log <- renderText({
           "Error: No study area shapefile loaded. Please load a shapefile in Step 1."
+        })
+        return()
+      }
+      # For occurrence_irregular, check that irregular matrix exists
+      if (selected_method == "occurrence_irregular" && is.null(data_store$pres_abs_irregular)) {
+        output$pae_pce_log <- renderText({
+          "Error: No irregular polygon matrix available. Please run Step 3 with 'Irregular polygons + regular grid' workflow first."
         })
         return()
       }
@@ -5407,6 +5412,11 @@ function(input, output, session) {
         mat_raw <- data_store$pres_abs_occurrence_only
         res <- data_store$pres_abs_occurrence_only_grid_res
         shape <- data_store$study_area_shapefile
+      } else if (selected_method == "occurrence_irregular") {
+        # Use irregular polygon matrix (points -> irregular polygons -> regular grid)
+        mat_raw <- data_store$pres_abs_irregular
+        res <- data_store$pres_abs_occurrence_only_grid_res
+        shape <- data_store$study_area_shapefile
       } else {
         # Use selected method's matrix (MST, MPC, BUFF) with stored grid resolution
         mat_raw <- switch(selected_method,
@@ -5424,6 +5434,19 @@ function(input, output, session) {
         shape <- data_store$mst_context$shapeFile %||% data_store$study_area_shapefile
       }
       n_iter <- input$pae_n_iterations
+
+      # Validate shapefile geometry to avoid duplicate vertex errors
+      if (inherits(shape, "SpatialPolygonsDataFrame") || inherits(shape, "SpatialPolygons")) {
+        shape_sf <- sf::st_as_sf(shape)
+        shape_sf <- sf::st_make_valid(shape_sf)
+        shape_sf <- sf::st_simplify(shape_sf, dTolerance = 0.0001, preserveTopology = TRUE)
+        shape_sf <- shape_sf[!sf::st_is_empty(shape_sf), ]
+        shape <- as(shape_sf, "Spatial")
+      } else if (inherits(shape, "sf")) {
+        shape <- sf::st_make_valid(shape)
+        shape <- sf::st_simplify(shape, dTolerance = 0.0001, preserveTopology = TRUE)
+        shape <- shape[!sf::st_is_empty(shape), ]
+      }
 
       mat <- as.matrix(mat_raw)
       mat_num <- suppressWarnings(matrix(as.numeric(mat), nrow = nrow(mat), ncol = ncol(mat), dimnames = dimnames(mat)))

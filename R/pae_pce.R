@@ -341,7 +341,19 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
   ##### shape file #####
 
   # Store original shapefile for irregular bins
-  shapeFile_sf <- if(inherits(shapeFile, "sf")) shapeFile else st_as_sf(shapeFile)
+  # Validate geometry to avoid duplicate vertex errors during plotting
+  if (inherits(shapeFile, "sf")) {
+    shapeFile_sf <- st_make_valid(shapeFile)
+    shapeFile_sf <- st_simplify(shapeFile_sf, dTolerance = 0.0001, preserveTopology = TRUE)
+    shapeFile_sf <- shapeFile_sf[!st_is_empty(shapeFile_sf), ]
+    shapeFile <- shapeFile_sf
+  } else {
+    shapeFile_sf <- st_as_sf(shapeFile)
+    shapeFile_sf <- st_make_valid(shapeFile_sf)
+    shapeFile_sf <- st_simplify(shapeFile_sf, dTolerance = 0.0001, preserveTopology = TRUE)
+    shapeFile_sf <- shapeFile_sf[!st_is_empty(shapeFile_sf), ]
+    shapeFile <- as(shapeFile_sf, "Spatial")
+  }
 
   # If using irregular bins (string grid names), find matching column in shapefile
   bin_column_name <- NULL
@@ -383,7 +395,10 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
     }
   }
 
-  shapeFile <- as(shapeFile, 'Spatial')
+  # Ensure shapeFile is Spatial for raster operations
+  if (!inherits(shapeFile, "Spatial")) {
+    shapeFile <- as(shapeFile, 'Spatial')
+  }
 
   # Create regular grid
   grid <- raster(extent(shapeFile), resolution = resol, crs = CRS("+proj=longlat +datum=WGS84"))
