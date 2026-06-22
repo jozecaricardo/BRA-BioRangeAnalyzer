@@ -5326,6 +5326,7 @@ function(input, output, session) {
   # Reactive value to store PAE-PCE results
   pae_results <- reactiveVal(NULL)
   pae_input_matrix_snapshot <- reactiveVal(NULL)
+  pae_plot_args <- reactiveVal(NULL)  # Store args to replay plot for download
   
   observeEvent(input$run_pae_pce, {
     # Check if using custom data
@@ -5435,17 +5436,22 @@ function(input, output, session) {
       }
       n_iter <- input$pae_n_iterations
 
-      # Validate shapefile geometry to avoid duplicate vertex errors
-      if (inherits(shape, "SpatialPolygonsDataFrame") || inherits(shape, "SpatialPolygons")) {
+      # SpatVector (terra) does not need geometry validation - terra handles it natively.
+      # Only validate if shape is Spatial* or sf (which use S2 geometry engine).
+      if (inherits(shape, "SpatVector")) {
+        # No validation needed - terra handles geometries without S2 issues
+      } else if (inherits(shape, "SpatialPolygonsDataFrame") || inherits(shape, "SpatialPolygons")) {
         shape_sf <- sf::st_as_sf(shape)
+        sf::sf_use_s2(FALSE)
         shape_sf <- sf::st_make_valid(shape_sf)
-        shape_sf <- sf::st_simplify(shape_sf, dTolerance = 0.0001, preserveTopology = TRUE)
         shape_sf <- shape_sf[!sf::st_is_empty(shape_sf), ]
+        sf::sf_use_s2(TRUE)
         shape <- as(shape_sf, "Spatial")
       } else if (inherits(shape, "sf")) {
+        sf::sf_use_s2(FALSE)
         shape <- sf::st_make_valid(shape)
-        shape <- sf::st_simplify(shape, dTolerance = 0.0001, preserveTopology = TRUE)
         shape <- shape[!sf::st_is_empty(shape), ]
+        sf::sf_use_s2(TRUE)
       }
 
       mat <- as.matrix(mat_raw)
@@ -5512,6 +5518,9 @@ function(input, output, session) {
             ymin = ymin,
             ymax = ymax
           )
+
+          # Store args for download replay
+          pae_plot_args(pae_args)
 
           do.call(pae_fun, pae_args)
         }, error = function(e) {
@@ -5652,6 +5661,38 @@ function(input, output, session) {
     }
   )
   
+  # Download handler for the PAE-PCE map as PNG
+  output$download_pae_map <- downloadHandler(
+    filename = function() {
+      paste0("pae_pce_map_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png")
+    },
+    content = function(file) {
+      args <- pae_plot_args()
+      if (is.null(args)) {
+        # No plot available yet
+        png(file, width = 800, height = 600)
+        plot.new()
+        text(0.5, 0.5, "No PAE-PCE map available.\nRun the analysis first.", cex = 1.5)
+        dev.off()
+        return(invisible(NULL))
+      }
+
+      # Replay the plot to a PNG device
+      png(file, width = 1200, height = 900, res = 150)
+      tryCatch({
+        pae_fun <- get_pae_pce_function()
+        sink(tempfile())  # suppress console output
+        do.call(pae_fun, args)
+        sink()
+      }, error = function(e) {
+        try(sink(), silent = TRUE)
+        plot.new()
+        text(0.5, 0.5, paste("Error generating map:", e$message), cex = 1)
+      })
+      dev.off()
+    }
+  )
+
   # ===== EXPORT FILES TAB =====
   area_code_mapping_snapshot <- reactiveVal(NULL)
   bgb_area_code_mapping_snapshot <- reactiveVal(NULL)

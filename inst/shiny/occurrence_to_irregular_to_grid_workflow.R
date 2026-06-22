@@ -18,6 +18,7 @@
 # PASSO 0: Carregar pacotes
 # ==============================================================================
 
+library(terra)
 library(sf)
 library(raster)
 library(dplyr)
@@ -26,41 +27,45 @@ library(dplyr)
 # PASSO 1: Carregar seus dados
 # ==============================================================================
 
-# --- 1A: Dados de ocorrência (CSV com colunas: spp, long, lat) ---
+# --- 1A: Dados de ocorrência (CSV/TXT com colunas: spp, long, lat) ---
 # Substitua pelo caminho do seu arquivo:
-occ_data <- read.csv("caminho/para/seu/arquivo_ocorrencias.csv")
+occ_data <- read.table("caminho/para/seu/arquivo_ocorrencias.txt", sep = "\t", dec = ".", header = TRUE)
 
 # Verificar estrutura
 head(occ_data)
-# Deve ter pelo menos: spp, long, lat
+# Deve ter pelo menos: spp, long, lat (ou SPECIES, LONG, LAT)
 # Se suas colunas têm nomes diferentes, renomeie:
-# names(occ_data) <- c("spp", "long", "lat")  # ajuste conforme necessário
+# names(occ_data)[names(occ_data) == "SPECIES"] <- "spp"
+# names(occ_data)[names(occ_data) == "LONG"] <- "long"
+# names(occ_data)[names(occ_data) == "LAT"] <- "lat"
 
 cat("Pontos de ocorrência carregados:", nrow(occ_data), "\n")
 cat("Espécies únicas:", length(unique(occ_data$spp)), "\n")
 cat("Espécies:", paste(unique(occ_data$spp), collapse = ", "), "\n\n")
 
 # --- 1B: Shapefile de polígonos irregulares (ex: províncias Morrone) ---
-# Substitua pelo caminho do seu shapefile:
-study_area <- sf::st_read("caminho/para/seu/shapefile.shp")
+# Carregamento via terra::vect()
+study_area_vect <- terra::vect("caminho/para/seu/shapefile.shp", crs = "+proj=longlat +datum=WGS84")
 
 # Verificar CRS e colunas
-print(sf::st_crs(study_area))
-print(names(study_area))
+print(terra::crs(study_area_vect))
+print(names(study_area_vect))
 
 # --- 1C: Definir qual coluna do shapefile identifica os polígonos ---
 # Olhe os nomes das colunas acima e escolha a coluna de ID:
 polygon_id_column <- "Provincias"  # <-- MUDE para o nome da sua coluna
 
 # Verificar os polígonos disponíveis
-cat("\nPolígonos encontrados:", length(unique(study_area[[polygon_id_column]])), "\n")
-print(unique(study_area[[polygon_id_column]]))
+cat("\nPolígonos encontrados:", length(unique(study_area_vect[[polygon_id_column]])), "\n")
+print(unique(study_area_vect[[polygon_id_column]]))
 
 # ==============================================================================
-# PASSO 2: Validar geometrias do shapefile
+# PASSO 2: Converter terra::vect para sf e validar geometrias
 # ==============================================================================
-# Shapefiles frequentemente têm geometrias inválidas. Vamos corrigir:
+# Convertemos para sf porque st_join é mais eficiente para spatial joins massivos.
+# O shapefile original permanece intacto como SpatVector.
 
+study_area <- sf::st_as_sf(study_area_vect)
 study_area <- sf::st_make_valid(study_area)
 study_area <- study_area[!sf::st_is_empty(study_area), ]
 
@@ -256,7 +261,7 @@ plot(sf::st_geometry(study_area),
      border = "darkgray", lwd = 1.5, col = "lightyellow")
 
 # Adicionar grid cells que têm pelo menos 1 espécie
-occupied_grids <- grid_sf[grid_sf$grid_id %in% rownames(pa_matrix_filtered), ]
+occupied_grids <- grid_sf[grid_sf$grid_id %in% as.integer(rownames(pa_matrix_filtered)), ]
 plot(sf::st_geometry(occupied_grids), add = TRUE, 
      col = rgb(0.2, 0.6, 1, 0.3), border = "blue", lwd = 0.5)
 

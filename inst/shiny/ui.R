@@ -450,13 +450,23 @@ shinyUI(
         uiOutput("extrap_method_info_ui"),
         div(
           style = "background-color: #e7f3ff; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196F3;",
-          h5("📌 Important: Which methods work with PAE-PCE?"),
-          p("PAE-PCE analysis (optional Step 5) requires a presence-absence matrix. Here's what works:", style = "font-weight: bold; margin-bottom: 10px;"),
+          h5("\U0001F4CC Important: Which methods work with PAE-PCE?"),
+          p("PAE-PCE analysis (optional Step 5) requires a presence-absence matrix built from regular grid cells. Here's what works:", style = "font-weight: bold; margin-bottom: 10px;"),
           div(
             style = "margin-left: 15px; font-size: 13px;",
-            p("✅ ", strong("Occurrence points only + Regular grid"), " → Matrix generated → Can use in PAE-PCE"),
-            p("✅ ", strong("Occurrence points only + Irregular polygons + Regular grid"), " → Converts occurrence points to irregular polygons + regular grids → Matrix generated → Can use in PAE-PCE/NDM"),
-            p("✅ ", strong("MST, Buffer, Convex Hull"), " → Extrapolation generated → Can use in PAE-PCE")
+            p("\u2705 ", strong("Occurrence points for PAE-PCE and NDM"), " with ", tags$em("Regular grid only"), " workflow:"),
+            p("Points \u2192 Assigned to regular grid cells \u2192 Matrix generated \u2192 Can use in PAE-PCE/NDM", style = "margin-left: 20px; color: #333;"),
+            p("In PAE-PCE tab, select: ", tags$code("Occurrence points"), style = "margin-left: 20px; font-size: 11px; color: #555;"),
+            br(),
+            p("\u2705 ", strong("Occurrence points for PAE-PCE and NDM"), " with ", tags$em("Irregular polygons + regular grid"), " workflow:"),
+            p("Points \u2192 Presence in irregular polygons \u2192 Converted to regular grid cells \u2192 Matrix generated \u2192 Can use in PAE-PCE/NDM", style = "margin-left: 20px; color: #333;"),
+            p("In PAE-PCE tab, select: ", tags$code("Occurrence points"), style = "margin-left: 20px; font-size: 11px; color: #555;"),
+            br(),
+            p("\u2705 ", strong("MST, Buffer, Convex Hull"), ":"),
+            p("Extrapolation generated \u2192 Converted to regular grid cells \u2192 Matrix generated \u2192 Can use in PAE-PCE/NDM", style = "margin-left: 20px; color: #333;"),
+            p("In PAE-PCE tab, select the corresponding method (MST, Convex Hull, or Buffer)", style = "margin-left: 20px; font-size: 11px; color: #555;"),
+            br(),
+            p(tags$em("Note: All PAE-PCE/NDM analyses require a regular grid matrix. Select the desired method below and choose the grid resolution. The extrapolation and the Leaflet map in Visualizations will always show your results regardless."), style = "font-size: 12px; color: #555; margin-top: 5px;")
           )
         ),
         div(
@@ -478,7 +488,7 @@ shinyUI(
               "extrap_method",
               "Select method:",
               choices = list(
-                "Occurrence points only" = "occurrence_only",
+                "Occurrence points for PAE-PCE and NDM analyses" = "occurrence_only",
                 "Buffer (circular buffers)" = "buffer",
                 "Convex Hull (minimum convex polygon)" = "convex_hull",
                 "Minimum Spanning Tree" = "mst"
@@ -492,19 +502,24 @@ shinyUI(
             ),
             conditionalPanel(
               condition = "input.extrap_method == 'occurrence_only'",
-              p("Build matrix from occurrence points. Choose one workflow below before running extrapolation:"),
+              div(
+                class = "alert alert-info", style = "font-size: 12px; padding: 10px; margin-bottom: 10px;",
+                p(strong("How this works:"), " Occurrence points will be assigned directly to regular grid cells to build the PAE-PCE/NDM matrix."),
+                p("If you want to use range extrapolations (MST, Convex Hull, or Buffer) for PAE-PCE/NDM, go back and select the desired extrapolation method above, choose the grid resolution, and click Run Extrapolation. The extrapolation will be converted to a regular grid matrix automatically."),
+                p("The Leaflet map in Visualizations will always show your results regardless of the method chosen.")
+              ),
+              p("Choose one workflow below before running:"),
               radioButtons(
                 "points_occurrence_mode",
                 "Occurrence workflow:",
                 choices = list(
                   "Regular grid only (points -> grid cells)" = "regular_grid",
-                  "Irregular polygons only (direct points -> polygons, no regular grid)" = "irregular_direct",
                   "Irregular polygons + regular grid (points -> grid -> polygons)" = "irregular_with_grid"
                 ),
                 selected = "regular_grid"
               ),
               conditionalPanel(
-                condition = "input.points_occurrence_mode == 'irregular_direct' || input.points_occurrence_mode == 'irregular_with_grid'",
+                condition = "input.points_occurrence_mode == 'irregular_with_grid'",
                 p(strong("Irregular polygons for counting/reporting units")),
                 p("Examples: states, ecoregions, municipalities. Choose which column from your study area shapefile (loaded in Step 1) defines these units."),
                 selectInput("points_irregular_bin_id_column", "Irregular polygon ID column (from study area shapefile):", choices = c("(No shapefile loaded)" = ""), selected = ""),
@@ -514,11 +529,7 @@ shinyUI(
                 condition = "input.points_occurrence_mode == 'regular_grid'",
                 p("Regular grid workflow: occurrence points are assigned to grid cells based on the selected grid resolution.", style = "font-size: 12px; color: #666;")
               ),
-              conditionalPanel(
-                condition = "input.points_occurrence_mode == 'irregular_direct'",
-                p("Direct irregular workflow: richness is computed by counting occurrence points directly inside each polygon.", style = "font-size: 12px; color: #666;"),
-                p("In this mode, richness by irregular polygons is computed automatically and the exported matrix basis becomes irregular polygons (direct point-in-polygon).", style = "font-size: 12px; color: #666;")
-              ),
+
               conditionalPanel(
                 condition = "input.points_occurrence_mode == 'irregular_with_grid'",
                 p("Grid-overlap workflow: points are first assigned to regular grid cells; then species counts per polygon are computed from grid-polygon overlap.", style = "font-size: 12px; color: #666;"),
@@ -532,9 +543,19 @@ shinyUI(
               checkboxInput("enable_irregular_richness", "Compute richness by irregular polygons", value = FALSE),
               conditionalPanel(
                 condition = "input.enable_irregular_richness == true",
+                div(
+                  class = "alert alert-warning", style = "font-size: 12px; padding: 10px; margin-bottom: 10px;",
+                  p(strong("How richness is computed depends on the method selected above:")),
+                  tags$ul(
+                    tags$li(strong("MST:"), " The MST lines (minimum spanning tree) of each taxon are intersected with the irregular polygons. If an MST line crosses a polygon, that taxon is counted as present."),
+                    tags$li(strong("Convex Hull:"), " The convex hull polygon of each taxon is intersected with the irregular polygons. If the hull overlaps a polygon, that taxon is counted as present."),
+                    tags$li(strong("Buffer:"), " The buffer circle around each taxon's points is intersected with the irregular polygons. If the buffer overlaps a polygon, that taxon is counted as present."),
+                    tags$li(strong("Occurrence points:"), " Only the occurrence points themselves are used. If a point falls inside a polygon, that taxon is counted as present in that polygon.")
+                  ),
+                  p("In all cases, richness = number of taxa present in each polygon. Results are shown in the Leaflet map (Visualizations tab).")
+                ),
                 p("Choose which column from your study area shapefile (loaded in Step 1) defines the subdivisions:"),
                 selectInput("irregular_richness_id_column", "Subdivision ID column (from study area shapefile):", choices = c("(No shapefile loaded)" = ""), selected = ""),
-                p("When this option is enabled, richness is computed by intersecting the extrapolation with the irregular polygons.", style = "font-size: 12px; color: #666;"),
                 p("If left empty, the app will auto-detect a suitable ID column.", style = "font-size: 12px; color: #666;")
               )
             ),
@@ -620,13 +641,15 @@ shinyUI(
                 "pae_method_choice",
                 "Use presence-absence matrix from:",
                 choices = c(
-                  "Occurrence points only" = "occurrence_only",
-                  "Minimum Spanning Tree (MST)" = "mst",
-                  "Convex Hull" = "mpc",
-                  "Buffer" = "buffer",
+                  "Occurrence points \u2192 Regular grid" = "occurrence_only",
+                  "Occurrence points \u2192 Irregular polygons \u2192 Regular grid" = "occurrence_irregular",
+                  "Minimum Spanning Tree (MST) \u2192 Regular grid" = "mst",
+                  "Convex Hull \u2192 Regular grid" = "mpc",
+                  "Buffer \u2192 Regular grid" = "buffer",
                   "Custom data" = "custom"
                 ),
-                selected = "mst"
+                selected = "mst",
+                width = "100%"
               ),
               p("Note: Only methods that have been run in Step 3 will be available.", style = "font-size: 11px; color: #666;")
             ),
@@ -635,8 +658,13 @@ shinyUI(
             div(style = "background-color: #d4edda; padding: 10px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #28a745;",
               conditionalPanel(
                 condition = "input.pae_method_choice == 'occurrence_only'",
-                h5("✓ Grid Resolution (from Step 3)"),
+                h5("\u2713 Grid Resolution (from Step 3)"),
                 p("The grid resolution from your Step 3 extrapolation will be used automatically. No additional input needed.", style = "font-size: 12px; color: #155724;")
+              ),
+              conditionalPanel(
+                condition = "input.pae_method_choice == 'occurrence_irregular'",
+                h5("\u2713 Irregular Polygons + Grid (from Step 3)"),
+                p("The irregular polygon assignment and grid resolution from your Step 3 extrapolation will be used automatically.", style = "font-size: 12px; color: #155724;")
               )
             ),
             
@@ -687,7 +715,9 @@ shinyUI(
               tabPanel(
                 "Generalized Track Map",
                 br(),
-                plotOutput("pae_pce_plot", height = "600px")
+                plotOutput("pae_pce_plot", height = "600px"),
+                br(),
+                downloadButton("download_pae_map", "Download Map (.png)", class = "btn btn-primary")
               ),
               tabPanel(
                 "Species List",
@@ -759,7 +789,7 @@ shinyUI(
             tabPanel(
               "Irregular Polygon Richness",
               br(),
-              p("How to use this panel: In Step 1, load your study area shapefile. In Step 3, select Buffer/Convex Hull/MST, enable 'Compute richness by irregular polygons', choose the subdivision ID column from your shapefile, then click Run Extrapolation. For points-only, select 'Occurrence points only', enable irregular polygons, choose ID column, and run once."),
+              p("How to use this panel: In Step 1, load your study area shapefile. In Step 3, select Buffer/Convex Hull/MST or 'Occurrence points for PAE-PCE and NDM analyses', enable 'Compute richness by irregular polygons', choose the subdivision ID column from your shapefile, then click Run Extrapolation."),
               leaflet::leafletOutput("irregular_bins_map", height = "500px"),
               br(),
               fluidRow(

@@ -341,19 +341,19 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
   ##### shape file #####
 
   # Store original shapefile for irregular bins
-  # Validate geometry to avoid duplicate vertex errors during plotting
-  if (inherits(shapeFile, "sf")) {
-    shapeFile_sf <- st_make_valid(shapeFile)
-    shapeFile_sf <- st_simplify(shapeFile_sf, dTolerance = 0.0001, preserveTopology = TRUE)
-    shapeFile_sf <- shapeFile_sf[!st_is_empty(shapeFile_sf), ]
-    shapeFile <- shapeFile_sf
-  } else {
+  # Validate geometry: disable S2, make valid, filter remaining invalid geometries
+  sf::sf_use_s2(FALSE)
+  if (inherits(shapeFile, "SpatVector")) {
     shapeFile_sf <- st_as_sf(shapeFile)
-    shapeFile_sf <- st_make_valid(shapeFile_sf)
-    shapeFile_sf <- st_simplify(shapeFile_sf, dTolerance = 0.0001, preserveTopology = TRUE)
-    shapeFile_sf <- shapeFile_sf[!st_is_empty(shapeFile_sf), ]
-    shapeFile <- as(shapeFile_sf, "Spatial")
+  } else if (inherits(shapeFile, "sf")) {
+    shapeFile_sf <- shapeFile
+  } else {
+    # Spatial* objects
+    shapeFile_sf <- st_as_sf(shapeFile)
   }
+  shapeFile_sf <- st_make_valid(shapeFile_sf)
+  shapeFile_sf <- shapeFile_sf[st_is_valid(shapeFile_sf), ]
+  shapeFile_sf <- shapeFile_sf[!st_is_empty(shapeFile_sf), ]
 
   # If using irregular bins (string grid names), find matching column in shapefile
   bin_column_name <- NULL
@@ -395,10 +395,8 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
     }
   }
 
-  # Ensure shapeFile is Spatial for raster operations
-  if (!inherits(shapeFile, "Spatial")) {
-    shapeFile <- as(shapeFile, 'Spatial')
-  }
+  # Convert validated sf to Spatial for raster operations
+  shapeFile <- as(shapeFile_sf, 'Spatial')
 
   # Create regular grid
   grid <- raster(extent(shapeFile), resolution = resol, crs = CRS("+proj=longlat +datum=WGS84"))
@@ -1059,12 +1057,11 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
           }
         }
       } else {
-        # For irregular bins, show grid boundaries and optionally label
+        # For irregular bins, show grid boundaries and optionally label with area initials
         if(gridView == TRUE){
           plot(cropped_map, add = TRUE, border = "gray", lwd = 0.5)
 
           if(labelGrid == TRUE){
-            # Label grid cells with abbreviated area names
             if(exists("endemic_grid_ids") && length(endemic_grid_ids) > 0) {
               # Get centroids of endemic grids
               endemic_grids_sf <- gridPolygon_sf[gridPolygon_sf$grid_id %in% endemic_grid_ids, ]
@@ -1076,40 +1073,70 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
                 match(endemic_grid_ids, grid_to_area_mapping$grid_id)
               ]
 
-              # Create abbreviations (2-3 letters)
-              # Store unique area names and their abbreviations
+              # Create abbreviations (first 2 letters of each word, unique)
               if(!exists("area_abbreviations")) {
-                unique_areas <- unique(area_labels_full)
+                unique_areas <- unique(na.omit(grid_to_area_mapping$area_name))
+                abbr_vec <- character(length(unique_areas))
+                used_abbrs <- character()
+
+                for(ia in seq_along(unique_areas)) {
+                  name <- unique_areas[ia]
+                  words <- strsplit(name, "[[:space:]]+")[[1]]
+                  if(length(words) >= 2) {
+                    abbr <- toupper(paste0(substr(words[1:min(3, length(words))], 1, 1), collapse = ""))
+                  } else {
+                    abbr <- toupper(substr(name, 1, 2))
+                  }
+                  # Ensure uniqueness
+                  if(abbr %in% used_abbrs) {
+                    abbr <- toupper(substr(name, 1, 3))
+                  }
+                  if(abbr %in% used_abbrs) {
+                    abbr <- paste0(abbr, ia)
+                  }
+                  used_abbrs <- c(used_abbrs, abbr)
+                  abbr_vec[ia] <- abbr
+                }
+
                 area_abbreviations <<- data.frame(
                   full_name = unique_areas,
-                  abbreviation = sapply(unique_areas, function(name) {
-                    # Split by spaces and take first letters
-                    words <- strsplit(name, " ")[[1]]
-                    if(length(words) >= 2) {
-                      # Use first letter of each word (max 3)
-                      abbr <- paste0(substr(words[1:min(3, length(words))], 1, 1), collapse = "")
-                    } else {
-                      # Use first 3 letters of single word
-                      abbr <- substr(name, 1, 3)
-                    }
-                    return(toupper(abbr))
-                  }),
+                  abbreviation = abbr_vec,
                   stringsAsFactors = FALSE
                 )
 
                 # Print legend to console
                 cat("\n=== AREA ABBREVIATIONS LEGEND ===\n")
-                for(i in 1:nrow(area_abbreviations)) {
-                  cat(paste0(area_abbreviations$abbreviation[i], " = ",
-                             area_abbreviations$full_name[i], "\n"))
+                for(ia in 1:nrow(area_abbreviations)) {
+                  cat(paste0("  ", area_abbreviations$abbreviation[ia], " = ",
+                             area_abbreviations$full_name[ia], "\n"))
                 }
                 cat("=================================\n\n")
               }
 
-              # Get abbreviations for labels
+              # Track area frequency across iterations (like asterisk logic)
+              for(ea in endemic_areas) {
+                if(!(ea %in% names(grid_frequency_tracker))) {
+                  grid_frequency_tracker[[ea]] <- 0
+                }
+                grid_frequency_tracker[[ea]] <- grid_frequency_tracker[[ea]] + 1
+              }
+
+              # Build labels: abbreviation + asterisks for repeated areas
               area_labels_abbr <- area_abbreviations$abbreviation[
                 match(area_labels_full, area_abbreviations$full_name)
               ]
+
+              # Add asterisks based on frequency
+              for(il in seq_along(area_labels_full)) {
+                area_nm <- area_labels_full[il]
+                if(!is.na(area_nm) && area_nm %in% names(grid_frequency_tracker)) {
+                  freq <- grid_frequency_tracker[[area_nm]]
+                  if(freq > 1) {
+                    asterisks <- paste(rep("*", freq - 1), collapse = "")
+                    area_labels_abbr[il] <- paste0(area_labels_abbr[il], asterisks)
+                  }
+                }
+              }
 
               text(coords[,1], coords[,2],
                    labels = area_labels_abbr,
@@ -1296,8 +1323,8 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
   }
 
 
-  # Only label grids if there are results
-  if(labelGrid == TRUE && length(listaR) > 0 && exists("map.r")){
+  # Only label grids if there are results (regular grid mode only)
+  if(!use_grid_mapping && labelGrid == TRUE && length(listaR) > 0 && exists("map.r")){
     if(sobrepo == TRUE){
       print('Bold numbers refer to PAE analysis using generalized tracks!')
     }
@@ -1307,24 +1334,20 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
       grid_id <- as.character(grid_labels[i])
       if(grid_id %in% names(grid_frequency_tracker)) {
         freq <- grid_frequency_tracker[[grid_id]]
-        # Add asterisks: frequency 1 = 1 asterisk, frequency 2 = 2 asterisks, etc.
         asterisks <- paste(rep('*', freq), collapse = '')
         grid_labels[i] <- paste0(grid_id, asterisks)
       }
     }
-    # Add white background for better visibility
     text(map.r[,c(1, 2)], labels = grid_labels, cex = 0.8, col = 'white', font = 2, bg = 'darkblue')
   }
 
   conta <- NULL
   
-  # NEW: Add legend showing asterisk meanings
+  # Add legend showing frequency (asterisks) and area abbreviations
   if(length(grid_frequency_tracker) > 0) {
-    # Get unique frequencies
     frequencies <- unique(unlist(grid_frequency_tracker))
     frequencies <- sort(frequencies)
     
-    # Create legend labels with asterisks
     legend_labels <- c()
     for(freq in frequencies) {
       asterisks <- paste(rep('*', freq), collapse = '')
@@ -1334,10 +1357,21 @@ pae_pce <- function(preabsMat, shapeFile, resol, N = NULL,
     
     legend(x = 'bottomright', 
            legend = legend_labels,
-           title = 'Grid Label = How Many Times It Appeared',
+           title = 'How Many Times It Appeared',
            cex = 0.85,
            bg = 'white',
            box.lwd = 2)
+  }
+
+  # For irregular bins mode: add area abbreviations legend on the plot
+  if(use_grid_mapping && exists("area_abbreviations") && nrow(area_abbreviations) > 0) {
+    abbr_legend <- paste0(area_abbreviations$abbreviation, " = ", area_abbreviations$full_name)
+    legend(x = 'topleft',
+           legend = abbr_legend,
+           title = 'Area Abbreviations',
+           cex = 0.7,
+           bg = 'white',
+           box.lwd = 1)
   }
 
   if(contagem == 1 && (length(listaR) == 0 || is.null(listaR[[1]]))){
