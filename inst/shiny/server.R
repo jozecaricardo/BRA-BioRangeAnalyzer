@@ -5327,6 +5327,7 @@ function(input, output, session) {
   pae_results <- reactiveVal(NULL)
   pae_input_matrix_snapshot <- reactiveVal(NULL)
   pae_plot_args <- reactiveVal(NULL)  # Store args to replay plot for download
+  pae_log_content <- reactiveVal("")  # Store log text from pae_pce analysis
   
   observeEvent(input$run_pae_pce, {
     # Check if using custom data
@@ -5337,31 +5338,23 @@ function(input, output, session) {
     if (use_custom) {
       # Validate custom data inputs
       if (is.null(input$pae_custom_matrix) || is.null(input$pae_custom_shapefile)) {
-        output$pae_pce_log <- renderText({
-          "Error: Please upload both the presence-absence matrix and shapefile for custom data analysis."
-        })
+        pae_log_content("Error: Please upload both the presence-absence matrix and shapefile for custom data analysis.")
         return()
       }
     } else if (selected_method == "occurrence_only" || selected_method == "occurrence_irregular") {
       # For occurrence_only or occurrence_irregular, validate inputs
       if (is.null(data_store$occurrence)) {
-        output$pae_pce_log <- renderText({
-          "Error: No occurrence data loaded. Please load occurrence data in Step 1 first."
-        })
+        pae_log_content("Error: No occurrence data loaded. Please load occurrence data in Step 1 first.")
         return()
       }
       # Check if shapefile is loaded
       if (is.null(data_store$study_area_shapefile)) {
-        output$pae_pce_log <- renderText({
-          "Error: No study area shapefile loaded. Please load a shapefile in Step 1."
-        })
+        pae_log_content("Error: No study area shapefile loaded. Please load a shapefile in Step 1.")
         return()
       }
       # For occurrence_irregular, check that irregular matrix exists
       if (selected_method == "occurrence_irregular" && is.null(data_store$pres_abs_irregular)) {
-        output$pae_pce_log <- renderText({
-          "Error: No irregular polygon matrix available. Please run Step 3 with 'Irregular polygons + regular grid' workflow first."
-        })
+        pae_log_content("Error: No irregular polygon matrix available. Please run Step 3 with 'Irregular polygons + regular grid' workflow first.")
         return()
       }
     } else {
@@ -5374,24 +5367,18 @@ function(input, output, session) {
       )
       
       if (is.null(method_matrix)) {
-        output$pae_pce_log <- renderText({
-          paste0("Error: No presence-absence matrix available for the selected method (", selected_method, ").\nPlease go to Step 3, select the desired extrapolation method, and run it first.")
-        })
+        pae_log_content(paste0("Error: No presence-absence matrix available for the selected method (", selected_method, ").\nPlease go to Step 3, select the desired extrapolation method, and run it first."))
         return()
       }
       
       # Check if shapefile is loaded
       if (is.null(data_store$mst_context$shapeFile) && is.null(data_store$study_area_shapefile)) {
-        output$pae_pce_log <- renderText({
-          "Error: No study area shapefile loaded. Please load a shapefile in Step 1."
-        })
+        pae_log_content("Error: No study area shapefile loaded. Please load a shapefile in Step 1.")
         return()
       }
     }
     # Show running status
-    output$pae_pce_log <- renderText({
-      "Running PAE-PCE analysis... This may take a while depending on the number of iterations and species."
-    })
+    pae_log_content("Running PAE-PCE analysis... This may take a while depending on the number of iterations and species.")
     
     # Run the analysis in a tryCatch block to handle errors gracefully
     tryCatch({
@@ -5492,61 +5479,73 @@ function(input, output, session) {
       ymax <- if(!is.na(input$pae_ymax)) input$pae_ymax else NULL
       
       # Capture plot output
+      # Build args list before renderPlot
+      pae_args <- list(
+        preabsMat = mat,
+        shapeFile = shape,
+        resol = res,
+        N = n_iter,
+        gridView = input$pae_grid_view,
+        labelGrid = input$pae_label_grid,
+        nonHomoplasticSpeciesList = TRUE,
+        random_seed = input$pae_seed,
+        sobrepo = input$pae_sobrepo,
+        xmin = xmin,
+        xmax = xmax,
+        ymin = ymin,
+        ymax = ymax,
+        bin_column_name_input = data_store$irregular_bins_id_column
+      )
+
+      # Store args for download replay
+      pae_plot_args(pae_args)
+
+      # Run analysis: capture text output and return value, then render plot
+      log_file <- tempfile(fileext = ".txt")
+      tmp_png <- tempfile(fileext = ".png")
+      pae_fun <- get_pae_pce_function()
+      
+      # Use capture.output to get all text output, and run in a temp PNG device
+      # to absorb the plot side-effect while capturing the return value
+      png(tmp_png, width = 1200, height = 900)
+      log_text <- capture.output({
+        result <- tryCatch(
+          do.call(pae_fun, pae_args),
+          error = function(e) {
+            cat(paste("Error during PAE-PCE analysis:", e$message, "\n"))
+            NULL
+          }
+        )
+      }, type = "output")
+      try(dev.off(), silent = TRUE)
+      try(unlink(tmp_png), silent = TRUE)
+
+      # Store log: fix carriage returns from pratchet trace output
+      # pratchet uses \r to overwrite lines in console; replace with \n for display
+      log_combined <- paste(c(filter_note, log_text), collapse = "\n")
+      log_combined <- gsub("\r", "\n", log_combined)  # replace \r with \n
+      log_combined <- gsub("\n{3,}", "\n\n", log_combined)  # collapse excessive blank lines
+      pae_log_content(log_combined)
+
+      # Store result
+      pae_results(result)
+
+      # Render the plot (the function plots as side-effect)
       output$pae_pce_plot <- renderPlot({
-        # We need to call the function here to generate the plot
-        # But we also want to capture the return value
-        # So we'll use a local variable and then update the reactive value
-        
-        # Temporarily redirect output to capture log
-        log_file <- tempfile()
-        sink(log_file)
-        
-        result <- tryCatch({
-          pae_fun <- get_pae_pce_function()
-          pae_args <- list(
-            preabsMat = mat,
-            shapeFile = shape,
-            resol = res,
-            N = n_iter,
-            gridView = input$pae_grid_view,
-            labelGrid = input$pae_label_grid,
-            nonHomoplasticSpeciesList = TRUE,  # Always generate species list
-            random_seed = input$pae_seed,
-            sobrepo = input$pae_sobrepo,
-            xmin = xmin,
-            xmax = xmax,
-            ymin = ymin,
-            ymax = ymax
-          )
-
-          # Store args for download replay
-          pae_plot_args(pae_args)
-
-          do.call(pae_fun, pae_args)
-        }, error = function(e) {
-          sink()
-          stop(e)
-        })
-        
-        sink()
-        
-        # Read log
-        log_content <- readLines(log_file)
-        output$pae_pce_log <- renderText({
-          paste(c(filter_note, log_content), collapse = "\n")
-        })
-        
-        # Store result
-        pae_results(result)
+        pae_fun <- get_pae_pce_function()
+        invisible(do.call(pae_fun, pae_args))
       })
       
     }, error = function(e) {
-      output$pae_pce_log <- renderText({
-        paste("Error during PAE-PCE analysis:", e$message)
-      })
+      pae_log_content(paste("Error during PAE-PCE analysis:", e$message))
     })
   })
   
+  # Render the analysis log from reactiveVal
+  output$pae_pce_log <- renderText({
+    pae_log_content()
+  })
+
   # Render the results table
   output$pae_pce_table <- DT::renderDataTable({
     res <- pae_results()
@@ -5661,38 +5660,6 @@ function(input, output, session) {
     }
   )
   
-  # Download handler for the PAE-PCE map as PNG
-  output$download_pae_map <- downloadHandler(
-    filename = function() {
-      paste0("pae_pce_map_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png")
-    },
-    content = function(file) {
-      args <- pae_plot_args()
-      if (is.null(args)) {
-        # No plot available yet
-        png(file, width = 800, height = 600)
-        plot.new()
-        text(0.5, 0.5, "No PAE-PCE map available.\nRun the analysis first.", cex = 1.5)
-        dev.off()
-        return(invisible(NULL))
-      }
-
-      # Replay the plot to a PNG device
-      png(file, width = 1200, height = 900, res = 150)
-      tryCatch({
-        pae_fun <- get_pae_pce_function()
-        sink(tempfile())  # suppress console output
-        do.call(pae_fun, args)
-        sink()
-      }, error = function(e) {
-        try(sink(), silent = TRUE)
-        plot.new()
-        text(0.5, 0.5, paste("Error generating map:", e$message), cex = 1)
-      })
-      dev.off()
-    }
-  )
-
   # ===== EXPORT FILES TAB =====
   area_code_mapping_snapshot <- reactiveVal(NULL)
   bgb_area_code_mapping_snapshot <- reactiveVal(NULL)

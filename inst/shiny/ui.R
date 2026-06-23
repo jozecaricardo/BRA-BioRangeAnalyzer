@@ -505,7 +505,9 @@ shinyUI(
               div(
                 class = "alert alert-info", style = "font-size: 12px; padding: 10px; margin-bottom: 10px;",
                 p(strong("How this works:"), " Occurrence points will be assigned directly to regular grid cells to build the PAE-PCE/NDM matrix."),
-                p("If you want to use range extrapolations (MST, Convex Hull, or Buffer) for PAE-PCE/NDM, go back and select the desired extrapolation method above, choose the grid resolution, and click Run Extrapolation. The extrapolation will be converted to a regular grid matrix automatically."),
+                p("If you want to use range extrapolations (MST, Convex Hull, or Buffer) for PAE-PCE/NDM, ",
+                  shiny::span(style = "font-weight: bold; color: #d9534f;", "go back and select the desired extrapolation method above, choose the grid resolution, and click Run Extrapolation."),
+                  " The extrapolation will be converted to a regular grid matrix automatically."),
                 p("The Leaflet map in Visualizations will always show your results regardless of the method chosen.")
               ),
               p("Choose one workflow below before running:"),
@@ -715,9 +717,7 @@ shinyUI(
               tabPanel(
                 "Generalized Track Map",
                 br(),
-                plotOutput("pae_pce_plot", height = "600px"),
-                br(),
-                downloadButton("download_pae_map", "Download Map (.png)", class = "btn btn-primary")
+                plotOutput("pae_pce_plot", height = "600px")
               ),
               tabPanel(
                 "Species List",
