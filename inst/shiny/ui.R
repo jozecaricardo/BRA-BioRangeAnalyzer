@@ -114,7 +114,7 @@ shinyUI(
         class = "container-fluid",
         style = "padding: 40px;",
         h1("BRA (BioRangeAnalyzer Shiny)"),
-        h3("Ancestral Range Estimation and Biogeographic Analysis"),
+        h3("Tool for manipulating biogeographic data and Ancestral Range Estimation with BioGeoBEARS"),
         hr(),
         p("This application provides a user-friendly interface for:"),
         tags$ul(
